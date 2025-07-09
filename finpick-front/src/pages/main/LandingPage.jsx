@@ -4,14 +4,14 @@ import {
   ChevronUp,
   ArrowRight,
   Sparkles,
-  Shield,
-  Target,
-  TrendingUp,
-  Star,
-  Users,
-  CreditCard,
+  Shield, // Already imported, now used for "중립적 분석"
+  Target, // Already imported, now used for "맞춤 상품"
+  TrendingUp, // New import for "실시간 데이터"
+  Star, // No longer needed for the hero section, but kept if used elsewhere.
+  Users, // No longer needed for the hero section, but kept if used elsewhere.
+  CreditCard, // Not used, can be removed if not planned for future.
   Search,
-  Zap,
+  Zap, // New import for "30초 추천"
   User,
   LogOut,
 } from "lucide-react";
@@ -21,12 +21,12 @@ import NicknameModal from "../components/NicknameModal";
 const FinPickLanding = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // 로그인 상태
-  const [showNicknameModal, setShowNicknameModal] = useState(false); // 닉네임 모달 상태
-  const [userNickname, setUserNickname] = useState(""); // 사용자 닉네임
-  const [showProfileMenu, setShowProfileMenu] = useState(false); // 프로필 메뉴
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [userNickname, setUserNickname] = useState("");
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  // 페이지 로드 시 로그인 상태 확인 (실제로는 localStorage나 Context에서 가져올 예정)
+  // 페이지 로드 시 로그인 상태 확인
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const fromOnboarding = urlParams.get("from") === "onboarding";
@@ -34,7 +34,7 @@ const FinPickLanding = () => {
 
     if (fromOnboarding && storedLoginState === "true") {
       setIsLoggedIn(true);
-      setShowNicknameModal(true); // 온보딩에서 왔으면 닉네임 모달 띄우기
+      setShowNicknameModal(true);
     } else if (storedLoginState === "true") {
       setIsLoggedIn(true);
       setUserNickname(localStorage.getItem("userNickname") || "사용자");
@@ -45,12 +45,11 @@ const FinPickLanding = () => {
     setOpenFaq(openFaq === index ? null : index);
   };
 
-  // 네비게이션 핸들러들
   const handleGetStarted = () => {
     if (isLoggedIn) {
-      navigate("/recommendations"); // 로그인된 상태면 추천 페이지로
+      navigate("/recommendations");
     } else {
-      navigate("/login"); // 로그인 안된 상태면 로그인 페이지로
+      navigate("/login");
     }
   };
 
@@ -70,12 +69,11 @@ const FinPickLanding = () => {
     setUserNickname(nickname);
     setShowNicknameModal(false);
     localStorage.setItem("userNickname", nickname);
-    // 여기서 실제 API 호출해서 닉네임 저장
   };
 
   const handleNicknameModalClose = () => {
     setShowNicknameModal(false);
-    setUserNickname("사용자"); // 기본값 설정
+    setUserNickname("사용자");
   };
 
   const faqData = [
@@ -139,7 +137,6 @@ const FinPickLanding = () => {
 
             <div className="flex items-center space-x-3">
               {isLoggedIn ? (
-                // 로그인된 상태
                 <>
                   <button
                     className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
@@ -177,7 +174,6 @@ const FinPickLanding = () => {
                   </div>
                 </>
               ) : (
-                // 로그인 안된 상태
                 <>
                   <button
                     className="text-gray-400 hover:text-white text-sm transition-colors"
@@ -199,7 +195,7 @@ const FinPickLanding = () => {
       </header>
 
       {/* Hero + Features Combined */}
-      <section className="py-16 lg:py-20">
+      <section className="py-10 lg:py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left: Hero Content */}
@@ -240,23 +236,123 @@ const FinPickLanding = () => {
                 </button>
               </div>
 
-              <div className="flex items-center space-x-6 text-sm text-gray-400">
-                <div className="flex items-center space-x-2">
-                  <Star className="w-4 h-4 text-yellow-400" />
-                  <span>5.0 평점</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Users className="w-4 h-4 text-emerald-400" />
-                  <span>10,000+ 사용자</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Shield className="w-4 h-4 text-cyan-400" />
-                  <span>100% 중립</span>
-                </div>
+              {/* Quick Features - REPLACED THIS SECTION */}
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { icon: <Zap className="w-4 h-4" />, text: "30초 추천" },
+                  { icon: <Shield className="w-4 h-4" />, text: "중립적 분석" },
+                  { icon: <Target className="w-4 h-4" />, text: "맞춤 상품" },
+                  {
+                    icon: <TrendingUp className="w-4 h-4" />,
+                    text: "실시간 데이터",
+                  },
+                ].map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center space-x-2 text-sm text-gray-400"
+                  >
+                    <div className="text-emerald-400">{item.icon}</div>
+                    <span>{item.text}</span>
+                  </div>
+                ))}
               </div>
             </div>
+            <div className="relative">
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl rounded-2xl border border-gray-700/50 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex space-x-1.5">
+                    <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                    <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full"></div>
+                    <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+                  </div>
+                  <div className="text-xs text-gray-500">FinPick AI</div>
+                </div>
 
-            {/* Right: How It Works */}
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs text-gray-500 mb-2">입력 예시:</div>
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+                      <div className="flex items-center space-x-2">
+                        <Search className="w-4 h-4 text-emerald-400" />
+                        <span className="text-emerald-300 text-sm">
+                          "월 50만원씩 2년간 안전하게 모으고 싶어요"
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      AI 추천 결과:
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-white/5 border border-gray-700/50 rounded-xl p-3 hover:bg-white/10 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-white text-sm mb-1">
+                              KB국민은행 정기적금
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              월 50만원 • 24개월
+                            </div>
+                            <div className="flex items-center mt-1">
+                              <div className="w-2 h-2 bg-emerald-400 rounded-full mr-1"></div>
+                              <span className="text-xs text-emerald-400">
+                                적합도 98%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-emerald-400">
+                              3.2%
+                            </div>
+                            <div className="text-xs text-gray-500">연이율</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/5 border border-gray-700/50 rounded-xl p-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-white text-sm mb-1">
+                              신한은행 쌓이는적금
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              월 50만원 • 24개월
+                            </div>
+                            <div className="flex items-center mt-1">
+                              <div className="w-2 h-2 bg-cyan-400 rounded-full mr-1"></div>
+                              <span className="text-xs text-cyan-400">
+                                적합도 92%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-cyan-400">
+                              3.0%
+                            </div>
+                            <div className="text-xs text-gray-500">연이율</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="w-full mt-4 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all">
+                  상세 비교 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works & Features - Combined into one grid for side-by-side */}
+      <section className="py-16 border-t border-gray-800/50" id="how-it-works">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12">
+            {/* Left: How It Works */}
             <div>
               <h2 className="text-2xl lg:text-3xl font-bold mb-6">
                 <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
@@ -270,24 +366,27 @@ const FinPickLanding = () => {
                     step: "01",
                     title: "목적 입력",
                     description: "자연어로 원하는 것을 말해보세요",
-                    color: "emerald",
+                    // Direct Tailwind class names for gradients
+                    gradientClass:
+                      "bg-gradient-to-r from-emerald-400 to-emerald-500",
                   },
                   {
                     step: "02",
                     title: "AI 분석",
                     description: "340개+ 상품에서 최적 매칭",
-                    color: "cyan",
+                    gradientClass: "bg-gradient-to-r from-cyan-400 to-cyan-500",
                   },
                   {
                     step: "03",
                     title: "맞춤 추천",
                     description: "적합도와 이유까지 명확하게",
-                    color: "blue",
+                    gradientClass: "bg-gradient-to-r from-blue-400 to-blue-500",
                   },
                 ].map((item, index) => (
                   <div key={index} className="flex items-start space-x-4">
                     <div
-                      className={`w-8 h-8 bg-gradient-to-r from-${item.color}-400 to-${item.color}-500 rounded-lg flex items-center justify-center text-gray-900 text-sm font-bold flex-shrink-0`}
+                      // Using the full gradientClass directly
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-gray-900 text-sm font-bold flex-shrink-0 ${item.gradientClass}`}
                     >
                       {item.step}
                     </div>
@@ -303,61 +402,56 @@ const FinPickLanding = () => {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-16 lg:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-              <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                왜 FinPick을 선택해야 할까요?
-              </span>
-            </h2>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-              기존 금융 서비스와는 다른 차별화된 경험을 제공합니다
-            </p>
-          </div>
+            {/* Right: Features */}
+            <div>
+              <h2 className="text-2xl lg:text-3xl font-bold mb-6">
+                <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                  왜 FinPick을 선택해야 할까요?
+                </span>
+              </h2>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: <Target className="w-8 h-8 text-emerald-400" />,
-                title: "맞춤형 추천",
-                description: "AI가 분석한 당신의 프로필에 딱 맞는 상품만 추천",
-                highlight: "95% 적합도",
-              },
-              {
-                icon: <Shield className="w-8 h-8 text-cyan-400" />,
-                title: "100% 중립",
-                description: "광고 없이 오직 사용자를 위한 객관적 추천",
-                highlight: "수수료 없음",
-              },
-              {
-                icon: <Zap className="w-8 h-8 text-blue-400" />,
-                title: "빠른 결과",
-                description: "복잡한 조건 입력 없이 30초 만에 추천 완료",
-                highlight: "30초 완료",
-              },
-            ].map((feature, index) => (
-              <div
-                key={index}
-                className="bg-gray-800/30 rounded-2xl p-8 border border-gray-700/50 hover:border-gray-600/50 transition-all"
-              >
-                <div className="mb-6">{feature.icon}</div>
-                <h3 className="text-xl font-bold text-white mb-3">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-400 mb-4">{feature.description}</p>
-                <div className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                  <span className="text-emerald-400 text-xs font-medium">
-                    {feature.highlight}
-                  </span>
-                </div>
+              <div className="space-y-6">
+                {[
+                  {
+                    icon: <Target className="w-8 h-8 text-emerald-400" />,
+                    title: "맞춤형 추천",
+                    description:
+                      "AI가 분석한 당신의 프로필에 딱 맞는 상품만 추천",
+                    highlight: "95% 적합도",
+                  },
+                  {
+                    icon: <Shield className="w-8 h-8 text-cyan-400" />,
+                    title: "100% 중립",
+                    description: "광고 없이 오직 사용자를 위한 객관적 추천",
+                    highlight: "수수료 없음",
+                  },
+                  {
+                    icon: <Zap className="w-8 h-8 text-blue-400" />,
+                    title: "빠른 결과",
+                    description: "복잡한 조건 입력 없이 30초 만에 추천 완료",
+                    highlight: "30초 완료",
+                  },
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">{feature.icon}</div>
+                    <div>
+                      <h3 className="font-semibold text-white mb-1">
+                        {feature.title}
+                      </h3>
+                      <p className="text-sm text-gray-400 mb-2">
+                        {feature.description}
+                      </p>
+                      <div className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="text-emerald-400 text-xs font-medium">
+                          {feature.highlight}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>
