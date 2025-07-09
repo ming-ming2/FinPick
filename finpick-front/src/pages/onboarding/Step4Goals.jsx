@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -25,6 +25,10 @@ const ModernOnboardingStep4 = () => {
     preferredProducts: [],
   });
   const [completionData, setCompletionData] = useState(null);
+  // 화면 변경 시 스크롤 상단으로 이동
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentView]);
 
   const goalQuestions = {
     primaryGoal: {
@@ -227,15 +231,12 @@ const ModernOnboardingStep4 = () => {
     console.log("온보딩 4단계 완료:", { formData, result });
   };
 
-  // 완료 화면에서 다른 페이지로 이동
-  const handleViewRecommendations = () => {
-    console.log("추천 결과 보기", completionData);
-    navigate("/recommendations");
-  };
-
-  const handleGoToDashboard = () => {
+  const handleGoToHome = () => {
     console.log("대시보드로 이동");
-    navigate("/dashboard");
+    // 로그인 상태 저장
+    localStorage.setItem("isLoggedIn", "true");
+    // 대시보드로 이동 (아직 없으니 일단 랜딩페이지로)
+    navigate("/?from=onboarding");
   };
 
   const isFormComplete =
@@ -585,18 +586,11 @@ const ModernOnboardingStep4 = () => {
         {/* Action Buttons */}
         <div className="space-y-4">
           <button
-            onClick={() => console.log("맞춤 추천 보기", completionData)}
+            onClick={handleGoToHome}
             className="w-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 py-4 px-6 rounded-xl font-bold hover:shadow-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2"
           >
             <Sparkles className="w-5 h-5" />
-            <span>내 맞춤 추천 보기</span>
-          </button>
-
-          <button
-            onClick={() => console.log("대시보드로 이동")}
-            className="w-full border border-gray-700 text-gray-300 py-3 px-6 rounded-xl font-medium hover:bg-gray-800 transition-colors"
-          >
-            대시보드로 이동
+            <span>내 맞춤 추천 시작하기</span>
           </button>
         </div>
 

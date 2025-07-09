@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import LandingPage from "./pages/main/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import Step1BasicInfo from "./pages/onboarding/Step1BasicInfo";
@@ -6,9 +8,21 @@ import Step2InvestmentProfile from "./pages/onboarding/Step2InvestmentProfile";
 import Step3FinancialStatus from "./pages/onboarding/Step3FinancialStatus";
 import Step4Goals from "./pages/onboarding/Step4Goals";
 
+// 스크롤 초기화 컴포넌트
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

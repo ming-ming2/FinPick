@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +17,16 @@ const ModernOnboardingStep2 = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [formData, setFormData] = useState({});
   const [totalScore, setTotalScore] = useState(0);
+
+  // 화면 변경 시 스크롤 상단으로 이동
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentView]);
+
+  // 질문 변경 시 스크롤 상단으로 이동
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentQuestion]);
 
   const questions = [
     {

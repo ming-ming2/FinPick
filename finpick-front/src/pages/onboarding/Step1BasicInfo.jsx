@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,6 +14,9 @@ import { useNavigate } from "react-router-dom";
 const ModernOnboardingStep1 = () => {
   const navigate = useNavigate();
   const [currentSection, setCurrentSection] = useState(0);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentSection]);
   const [formData, setFormData] = useState({
     age: "",
     gender: "",

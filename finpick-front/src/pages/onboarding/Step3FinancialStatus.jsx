@@ -26,7 +26,9 @@ const ModernOnboardingStep3 = () => {
     savingsGoal: "",
   });
   const [financialHealth, setFinancialHealth] = useState(null);
-
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentSection]);
   const sections = [
     {
       id: "income",
