@@ -16,37 +16,41 @@ import {
   LogOut,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import NicknameModal from "../components/NicknameModal";
+// import NicknameModal from "../components/NicknameModal"; // Removed as per instructions
+import { useAuth } from "../../contexts/AuthContext";
+import { logout } from "../../services/auth";
 
 const FinPickLanding = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated, loading } = useAuth(); // Use useAuth hook
   const [openFaq, setOpenFaq] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [showNicknameModal, setShowNicknameModal] = useState(false);
-  const [userNickname, setUserNickname] = useState("");
+
+  // const [isLoggedIn, setIsLoggedIn] = useState(false); // Removed
+  // const [showNicknameModal, setShowNicknameModal] = useState(false); // Removed
+  // const [userNickname, setUserNickname] = useState(""); // Removed
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  // 페이지 로드 시 로그인 상태 확인
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromOnboarding = urlParams.get("from") === "onboarding";
-    const storedLoginState = localStorage.getItem("isLoggedIn");
+  // 페이지 로드 시 로그인 상태 확인 - REPLACED THIS LOGIC
+  // useEffect(() => {
+  //   const urlParams = new URLSearchParams(window.location.search);
+  //   const fromOnboarding = urlParams.get("from") === "onboarding";
+  //   const storedLoginState = localStorage.getItem("isLoggedIn");
 
-    if (fromOnboarding && storedLoginState === "true") {
-      setIsLoggedIn(true);
-      setShowNicknameModal(true);
-    } else if (storedLoginState === "true") {
-      setIsLoggedIn(true);
-      setUserNickname(localStorage.getItem("userNickname") || "사용자");
-    }
-  }, []);
+  //   if (fromOnboarding && storedLoginState === "true") {
+  //     setIsLoggedIn(true);
+  //     setShowNicknameModal(true);
+  //   } else if (storedLoginState === "true") {
+  //     setIsLoggedIn(true);
+  //     setUserNickname(localStorage.getItem("userNickname") || "사용자");
+  //   }
+  // }, []);
 
   const toggleFaq = (index) => {
     setOpenFaq(openFaq === index ? null : index);
   };
 
   const handleGetStarted = () => {
-    if (isLoggedIn) {
+    if (isAuthenticated) {
       navigate("/recommendations");
     } else {
       navigate("/login");
@@ -57,24 +61,27 @@ const FinPickLanding = () => {
     navigate("/login");
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUserNickname("");
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("userNickname");
-    setShowProfileMenu(false);
+  // Modified handleLogout to use the provided logout service
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setShowProfileMenu(false);
+    } catch (error) {
+      console.error("로그아웃 실패:", error);
+    }
   };
 
-  const handleNicknameSubmit = (nickname) => {
-    setUserNickname(nickname);
-    setShowNicknameModal(false);
-    localStorage.setItem("userNickname", nickname);
-  };
+  // Removed NicknameModal related handlers as per instructions
+  // const handleNicknameSubmit = (nickname) => {
+  //   setUserNickname(nickname);
+  //   setShowNicknameModal(false);
+  //   localStorage.setItem("userNickname", nickname);
+  // };
 
-  const handleNicknameModalClose = () => {
-    setShowNicknameModal(false);
-    setUserNickname("사용자");
-  };
+  // const handleNicknameModalClose = () => {
+  //   setShowNicknameModal(false);
+  //   setUserNickname("사용자");
+  // };
 
   const faqData = [
     {
@@ -94,14 +101,23 @@ const FinPickLanding = () => {
     },
   ];
 
+  // 로딩 중일 때 표시
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-white text-lg">로딩 중...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* 닉네임 모달 */}
-      <NicknameModal
+      {/* 닉네임 모달 - REMOVED AS PER INSTRUCTIONS */}
+      {/* <NicknameModal
         isOpen={showNicknameModal}
         onClose={handleNicknameModalClose}
         onSubmit={handleNicknameSubmit}
-      />
+      /> */}
 
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-gray-950/80 border-b border-gray-800/50">
@@ -136,7 +152,7 @@ const FinPickLanding = () => {
             </nav>
 
             <div className="flex items-center space-x-3">
-              {isLoggedIn ? (
+              {isAuthenticated ? (
                 <>
                   <button
                     className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
@@ -150,17 +166,22 @@ const FinPickLanding = () => {
                       className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors text-sm"
                     >
                       <User className="w-4 h-4" />
-                      <span>{userNickname}</span>
+                      <span>
+                        {user?.displayName || user?.email || "사용자"}
+                      </span>
                       <ChevronDown className="w-3 h-3" />
                     </button>
 
                     {showProfileMenu && (
                       <div className="absolute right-0 mt-2 w-48 bg-gray-900 rounded-lg shadow-lg border border-gray-700 py-1">
                         <button
-                          onClick={() => setShowNicknameModal(true)}
+                          onClick={() => {
+                            navigate("/profile");
+                            setShowProfileMenu(false); // Close menu after navigation
+                          }}
                           className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
                         >
-                          닉네임 변경
+                          프로필
                         </button>
                         <button
                           onClick={handleLogout}
@@ -228,7 +249,7 @@ const FinPickLanding = () => {
                   className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-3 rounded-lg text-lg font-bold hover:shadow-lg transition-all flex items-center justify-center space-x-2"
                   onClick={handleGetStarted}
                 >
-                  <span>{isLoggedIn ? "추천 받기" : "지금 시작하기"}</span>
+                  <span>{isAuthenticated ? "추천 받기" : "지금 시작하기"}</span>
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <button className="border border-gray-700 text-gray-300 px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-all">
@@ -236,7 +257,7 @@ const FinPickLanding = () => {
                 </button>
               </div>
 
-              {/* Quick Features - REPLACED THIS SECTION */}
+              {/* Quick Features */}
               <div className="grid grid-cols-2 gap-4">
                 {[
                   { icon: <Zap className="w-4 h-4" />, text: "30초 추천" },
@@ -507,7 +528,7 @@ const FinPickLanding = () => {
               className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-3 rounded-lg text-lg font-bold hover:shadow-lg transition-all"
               onClick={handleGetStarted}
             >
-              {isLoggedIn ? "추천 받기" : "무료로 시작하기"}
+              {isAuthenticated ? "추천 받기" : "무료로 시작하기"}
             </button>
           </div>
         </div>

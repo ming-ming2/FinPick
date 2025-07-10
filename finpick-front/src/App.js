@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
 import LandingPage from "./pages/main/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import Step1BasicInfo from "./pages/onboarding/Step1BasicInfo";
@@ -21,17 +22,22 @@ function ScrollToTop() {
 
 function App() {
   return (
-    <Router>
-      <ScrollToTop />
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/onboarding/step1" element={<Step1BasicInfo />} />
-        <Route path="/onboarding/step2" element={<Step2InvestmentProfile />} />
-        <Route path="/onboarding/step3" element={<Step3FinancialStatus />} />
-        <Route path="/onboarding/step4" element={<Step4Goals />} />
-      </Routes>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <ScrollToTop />
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/onboarding/step1" element={<Step1BasicInfo />} />
+          <Route
+            path="/onboarding/step2"
+            element={<Step2InvestmentProfile />}
+          />
+          <Route path="/onboarding/step3" element={<Step3FinancialStatus />} />
+          <Route path="/onboarding/step4" element={<Step4Goals />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

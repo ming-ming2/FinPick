@@ -10,22 +10,35 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext"; // Import useAuth
 
 const ModernOnboardingStep1 = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, loading } = useAuth(); // Use useAuth hook
+
   const [currentSection, setCurrentSection] = useState(0);
+
+  // Scroll to top on section change
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentSection]);
+
+  // Authentication check and redirection
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, loading, navigate]);
+
   const [formData, setFormData] = useState({
     age: "",
     gender: "",
     occupation: "",
-    jobStability: "",
+    jobStability: "", // Not currently used in sections/questions, but kept in formData
     residence: "",
     housingType: "",
     maritalStatus: "",
-    dependents: "",
+    dependents: "", // Not currently used in sections/questions, but kept in formData
   });
 
   const sections = [
@@ -264,6 +277,20 @@ const ModernOnboardingStep1 = () => {
         return null;
     }
   };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-white text-lg">로딩 중...</div>
+      </div>
+    );
+  }
+
+  // If not authenticated after loading, return null (redirection handled by useEffect)
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
