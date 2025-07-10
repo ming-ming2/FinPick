@@ -1,15 +1,27 @@
-import firebase_admin 
+import firebase_admin
 from firebase_admin import credentials, auth
 from fastapi import HTTPException, status
 from app.config import settings
-import os
+import json
 
 class FirebaseAuth:
     def __init__(self):
         if not firebase_admin._apps:
-            # Firebase 초기화
-            cred_path = os.path.join(os.getcwd(), settings.firebase_credentials_path)
-            cred = credentials.Certificate(cred_path)
+            # 환경 변수에서 Firebase 설정 읽기
+            firebase_credentials = {
+                "type": "service_account",
+                "project_id": settings.firebase_project_id,
+                "private_key_id": settings.firebase_private_key_id,
+                "private_key": settings.firebase_private_key.replace('\\n', '\n'),
+                "client_email": settings.firebase_client_email,
+                "client_id": settings.firebase_client_id,
+                "auth_uri": settings.firebase_auth_uri,
+                "token_uri": settings.firebase_token_uri,
+                "auth_provider_x509_cert_url": settings.firebase_auth_provider_cert_url,
+                "client_x509_cert_url": settings.firebase_client_cert_url
+            }
+            
+            cred = credentials.Certificate(firebase_credentials)
             firebase_admin.initialize_app(cred)
     
     def verify_token(self, token: str):

@@ -1,0 +1,13 @@
+# Firebase 키 파일
+firebase-key.json
+*.json
+
+# 환경 변수
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+venv/
