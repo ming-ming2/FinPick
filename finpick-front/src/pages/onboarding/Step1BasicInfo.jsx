@@ -11,10 +11,12 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext"; // Import useAuth
+import { useOnboarding } from "../../hooks/useOnboarding"; // useOnboarding 훅 임포트
 
 const ModernOnboardingStep1 = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, loading } = useAuth(); // Use useAuth hook
+  const { isAuthenticated, loading: authLoading } = useAuth(); // AuthContext의 로딩 상태
+  const { saveStep1, loading: saveLoading, error } = useOnboarding(); // useOnboarding 훅 사용
 
   const [currentSection, setCurrentSection] = useState(0);
 
@@ -25,10 +27,10 @@ const ModernOnboardingStep1 = () => {
 
   // Authentication check and redirection
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
+    if (!authLoading && !isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
 
   const [formData, setFormData] = useState({
     age: "",
@@ -134,13 +136,20 @@ const ModernOnboardingStep1 = () => {
     }));
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    // async 키워드 추가
     if (currentSection < sections.length - 1) {
       setCurrentSection(currentSection + 1);
     } else {
-      // 모든 섹션 완료되면 다음 온보딩 페이지로
-      console.log("1단계 완료:", formData);
-      navigate("/onboarding/step2");
+      // 마지막 섹션에서 DB 저장
+      const success = await saveStep1(formData); // useOnboarding 훅의 saveStep1 사용
+
+      if (success) {
+        console.log("1단계 완료 및 저장:", formData);
+        navigate("/onboarding/step2");
+      } else {
+        alert("저장에 실패했습니다. 다시 시도해주세요."); // 실패 시 알림
+      }
     }
   };
 
@@ -278,11 +287,11 @@ const ModernOnboardingStep1 = () => {
     }
   };
 
-  // Render loading state
-  if (loading) {
+  // Render loading state for authentication
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-white text-lg">로딩 중...</div>
+        <div className="text-white text-lg">인증 확인 중...</div>
       </div>
     );
   }
@@ -343,6 +352,24 @@ const ModernOnboardingStep1 = () => {
         </div>
       </div>
 
+      {/* 로딩 오버레이 */}
+      {saveLoading && ( // saveLoading 상태를 사용
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-xl">
+            <div className="text-center">
+              <div className="animate-spin w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p>정보를 저장하고 있습니다...</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 에러 표시 */}
+      {error && ( // error 상태를 사용
+        <div className="fixed top-4 right-4 bg-red-600 text-white p-4 rounded-lg z-50">
+          {error}
+        </div>
+      )}
+
       {/* Content */}
       <div className="px-6 py-8 max-w-4xl mx-auto">
         {/* Section Header */}
@@ -399,9 +426,9 @@ const ModernOnboardingStep1 = () => {
 
           <button
             onClick={handleNext}
-            disabled={!canProceed}
+            disabled={!canProceed || saveLoading} // 저장 중일 때는 버튼 비활성화
             className={`px-8 py-3 rounded-xl font-bold transition-all flex items-center space-x-2 ${
-              canProceed
+              canProceed && !saveLoading
                 ? "bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 hover:shadow-lg transform hover:scale-105"
                 : "bg-gray-700 text-gray-400 cursor-not-allowed"
             }`}

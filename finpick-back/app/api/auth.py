@@ -1,3 +1,4 @@
+#finpick-back/app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.user import User, UserCreate, Token, UserLogin
 from app.auth.firebase_auth import firebase_auth

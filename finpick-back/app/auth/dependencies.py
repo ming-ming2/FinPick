@@ -1,3 +1,4 @@
+#finpick-back/app/auth/dependencies.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.auth.firebase_auth import firebase_auth

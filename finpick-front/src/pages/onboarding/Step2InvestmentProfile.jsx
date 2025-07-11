@@ -10,9 +10,12 @@ import {
   Zap,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useOnboarding } from "../../hooks/useOnboarding"; // useOnboarding 훅 추가
 
 const ModernOnboardingStep2 = () => {
   const navigate = useNavigate();
+  const { saveStep2, loading, error } = useOnboarding(); // useOnboarding 훅 사용
+
   const [currentView, setCurrentView] = useState("intro"); // 'intro', 'quiz', 'result'
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [formData, setFormData] = useState({});
@@ -36,12 +39,20 @@ const ModernOnboardingStep2 = () => {
       type: "cards",
       options: [
         {
-          value: "완전 초보",
+          value: "전혀 없음", // '완전 초보'를 '전혀 없음'으로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 1,
           emoji: "🌱",
           desc: "투자는 처음이에요",
           color: "emerald",
           detail: "예적금만 해봤어요",
+        },
+        {
+          value: "1년 미만", // 추가 (수정된 부분의 scoreMap과 일치시키기 위함)
+          score: 1,
+          emoji: "🐣",
+          desc: "시작한 지 얼마 안 됐어요",
+          color: "emerald",
+          detail: "소액 투자를 해봤어요",
         },
         {
           value: "1-2년",
@@ -76,7 +87,7 @@ const ModernOnboardingStep2 = () => {
       type: "scenario",
       options: [
         {
-          value: "즉시 팔고 안전한 곳으로",
+          value: "매우 불안함", // '즉시 팔고 안전한 곳으로'를 '매우 불안함'으로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 1,
           emoji: "😰",
           desc: "손실은 절대 안돼요",
@@ -90,14 +101,14 @@ const ModernOnboardingStep2 = () => {
           reaction: "보수적 성향",
         },
         {
-          value: "시장 상황을 분석해보기",
+          value: "어느 정도 감내", // '시장 상황을 분석해보기'를 '어느 정도 감내'로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 3,
           emoji: "🤔",
           desc: "냉정하게 판단할게요",
           reaction: "균형적 성향",
         },
         {
-          value: "오히려 더 사볼 기회로 보기",
+          value: "크게 걱정하지 않음", // '오히려 더 사볼 기회로 보기'를 '크게 걱정하지 않음'으로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 4,
           emoji: "😎",
           desc: "기회라고 생각해요",
@@ -112,11 +123,18 @@ const ModernOnboardingStep2 = () => {
       type: "slider",
       options: [
         {
-          value: "2-3%",
+          value: "1-3%", // '2-3%'를 '1-3%'로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 1,
           emoji: "🛡️",
           desc: "안전이 최우선",
           color: "green",
+        },
+        {
+          value: "3-5%", // 추가 (수정된 부분의 scoreMap과 일치시키기 위함)
+          score: 2,
+          emoji: "📈",
+          desc: "적당한 수익 추구",
+          color: "blue",
         },
         {
           value: "5-7%",
@@ -126,14 +144,14 @@ const ModernOnboardingStep2 = () => {
           color: "blue",
         },
         {
-          value: "10-15%",
+          value: "7-10%", // 추가 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 3,
-          emoji: "📈",
-          desc: "적극적 수익",
+          emoji: "🚀",
+          desc: "꽤 높은 수익",
           color: "purple",
         },
         {
-          value: "20% 이상",
+          value: "10% 이상", // '10-15%'와 '20% 이상'을 통합하고 '10% 이상'으로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 4,
           emoji: "🚀",
           desc: "고수익 추구",
@@ -148,7 +166,7 @@ const ModernOnboardingStep2 = () => {
       type: "timeline",
       options: [
         {
-          value: "1년 미만",
+          value: "1년 이내", // '1년 미만'을 '1년 이내'로 변경 (수정된 부분의 scoreMap과 일치시키기 위함)
           score: 1,
           emoji: "⚡",
           desc: "빠른 결과",
@@ -178,42 +196,111 @@ const ModernOnboardingStep2 = () => {
       ],
     },
     {
-      id: "knowledge",
+      id: "investmentKnowledge", // 'knowledge'를 'investmentKnowledge'로 변경 (수정된 부분과 일치시키기 위함)
       title: "다음 중 알고 있는 용어는?",
       subtitle: "복수 선택 가능해요 (모르면 패스해도 OK)",
       type: "knowledge",
       options: [
-        { value: "ETF", score: 0.5, emoji: "📊", desc: "상장지수펀드" },
-        { value: "리밸런싱", score: 0.5, emoji: "⚖️", desc: "포트폴리오 조정" },
-        { value: "P/E 비율", score: 0.5, emoji: "🔢", desc: "주가수익비율" },
+        { value: "ETF", score: 1, emoji: "📊", desc: "상장지수펀드" }, // score를 1로 변경 (수정된 부분은 length로 계산하므로 단일 항목당 점수를 1로 가정)
+        { value: "리밸런싱", score: 1, emoji: "⚖️", desc: "포트폴리오 조정" },
+        { value: "P/E 비율", score: 1, emoji: "🔢", desc: "주가수익비율" },
         {
           value: "달러 코스트 애버리징",
-          score: 0.5,
+          score: 1,
           emoji: "💰",
           desc: "분할 매수 전략",
         },
-        { value: "복리 효과", score: 0.3, emoji: "📈", desc: "이자의 이자" },
-        { value: "모르겠어요", score: 0, emoji: "🤷", desc: "솔직한 선택" },
+        { value: "복리 효과", score: 1, emoji: "📈", desc: "이자의 이자" },
+        // "모르겠어요" 옵션은 지식 점수에 반영되지 않으므로 제거하거나 score를 0으로 유지
       ],
     },
   ];
 
-  const handleAnswer = (questionId, answer, score) => {
-    setFormData((prev) => ({
-      ...prev,
-      [questionId]: { answer, score },
-    }));
+  // 수정된 부분의 getScoreForAnswer 로직을 통합 (knowledge는 예외 처리)
+  const getScoreForAnswer = (questionId, answer) => {
+    const question = questions.find((q) => q.id === questionId);
+    if (!question) return 0;
 
-    setTotalScore((prev) => {
-      const newScore = prev + score;
-      if (formData[questionId]) {
-        return newScore - formData[questionId].score;
+    if (questionId === "investmentKnowledge") {
+      // knowledge는 선택된 항목 수 자체가 점수가 되므로, 여기서는 사용되지 않음
+      // handleAnswer에서 직접 처리
+      return 0;
+    }
+
+    const option = question.options.find((opt) => opt.value === answer);
+    return option ? option.score : 0;
+  };
+
+  // 수정된 부분의 calculateTotalScore 로직을 통합
+  // 이 함수는 최종 점수 계산 시 사용되며, handleAnswer에서 실시간 totalScore를 업데이트하는 방식과 함께 동작
+  const calculateFinalTotalScore = () => {
+    let score = 0;
+    score += getScoreForAnswer("experience", formData.experience?.answer);
+    score += getScoreForAnswer("riskTolerance", formData.riskTolerance?.answer);
+    score += getScoreForAnswer(
+      "returnExpectation",
+      formData.returnExpectation?.answer
+    );
+    score += getScoreForAnswer(
+      "investmentPeriod",
+      formData.investmentPeriod?.answer
+    );
+    // investmentKnowledge는 선택된 항목의 길이를 점수로 사용
+    score += formData.investmentKnowledge?.answer?.length || 0;
+    return score;
+  };
+
+  const handleAnswer = (questionId, answer, score) => {
+    setFormData((prev) => {
+      const newFormData = { ...prev };
+      let newScoreForQuestion = 0;
+
+      if (questionId === "investmentKnowledge") {
+        // investmentKnowledge는 배열로 처리
+        const currentAnswers = Array.isArray(prev[questionId]?.answer)
+          ? prev[questionId].answer
+          : [];
+        const isSelected = currentAnswers.includes(answer);
+        let updatedAnswers;
+
+        if (isSelected) {
+          updatedAnswers = currentAnswers.filter((a) => a !== answer);
+        } else {
+          updatedAnswers = [...currentAnswers, answer];
+        }
+        newScoreForQuestion = updatedAnswers.length; // 지식 질문은 선택된 개수만큼 점수
+        newFormData[questionId] = {
+          answer: updatedAnswers,
+          score: newScoreForQuestion,
+        };
+      } else {
+        // 일반 질문은 단일 선택
+        newScoreForQuestion = score;
+        newFormData[questionId] = { answer, score: newScoreForQuestion };
       }
-      return newScore;
+
+      // 전체 totalScore 업데이트 로직
+      let recalculatedTotal = 0;
+      for (const q of questions) {
+        if (newFormData[q.id]) {
+          if (q.id === "investmentKnowledge") {
+            recalculatedTotal += newFormData[q.id].answer?.length || 0;
+          } else {
+            const option = q.options.find(
+              (opt) => opt.value === newFormData[q.id].answer
+            );
+            recalculatedTotal += option ? option.score : 0;
+          }
+        }
+      }
+      setTotalScore(recalculatedTotal);
+
+      return newFormData;
     });
   };
 
-  const handleNext = () => {
+  const handleNextQuestion = () => {
+    // 이름 변경: handleNext -> handleNextQuestion
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
@@ -227,14 +314,53 @@ const ModernOnboardingStep2 = () => {
     }
   };
 
-  // 결과 화면에서 다음 단계로 이동
-  const handleGoToNextStep = () => {
-    console.log("2단계 완료:", {
-      formData,
-      totalScore,
-      riskLevel: calculateRiskLevel(totalScore),
-    });
-    navigate("/onboarding/step3");
+  // 결과 화면에서 다음 단계로 이동 (saveStep2 로직 통합)
+  const handleGoToNextStep = async () => {
+    // 최종 점수와 데이터 구조를 수정된 부분에 맞게 구성
+    const investmentProfileData = {
+      experience: {
+        answer: formData.experience?.answer,
+        score: getScoreForAnswer("experience", formData.experience?.answer),
+      },
+      riskTolerance: {
+        answer: formData.riskTolerance?.answer,
+        score: getScoreForAnswer(
+          "riskTolerance",
+          formData.riskTolerance?.answer
+        ),
+      },
+      returnExpectation: {
+        answer: formData.returnExpectation?.answer,
+        score: getScoreForAnswer(
+          "returnExpectation",
+          formData.returnExpectation?.answer
+        ),
+      },
+      investmentPeriod: {
+        answer: formData.investmentPeriod?.answer,
+        score: getScoreForAnswer(
+          "investmentPeriod",
+          formData.investmentPeriod?.answer
+        ),
+      },
+      investmentKnowledge: {
+        answers: formData.investmentKnowledge?.answer || [],
+        score: formData.investmentKnowledge?.answer?.length || 0, // knowledge는 선택된 항목 수
+      },
+      totalScore: totalScore, // 현재 계산된 totalScore 사용
+    };
+
+    console.log("2단계 완료 및 저장 시도:", investmentProfileData);
+
+    const success = await saveStep2(investmentProfileData);
+
+    if (success) {
+      console.log("2단계 완료 및 저장 성공:", investmentProfileData);
+      navigate("/onboarding/step3");
+    } else {
+      alert("저장에 실패했습니다. 다시 시도해주세요.");
+      console.error("2단계 저장 실패:", error);
+    }
   };
 
   const calculateRiskLevel = (score) => {
@@ -283,6 +409,35 @@ const ModernOnboardingStep2 = () => {
       products: ["성장주", "테마주", "파생상품"],
     };
   };
+
+  // 로딩 오버레이
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-gray-950 bg-opacity-75 flex items-center justify-center z-50">
+        <div className="text-white text-lg flex items-center">
+          <svg
+            className="animate-spin h-6 w-6 mr-3 text-emerald-400"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          저장 중...
+        </div>
+      </div>
+    );
+  }
 
   // 인트로 화면
   if (currentView === "intro") {
@@ -404,7 +559,11 @@ const ModernOnboardingStep2 = () => {
 
   // 퀴즈 화면
   const currentQ = questions[currentQuestion];
-  const isAnswered = formData[currentQ.id];
+  // knowledge 질문의 경우, formData[currentQ.id]?.answer가 배열이므로 length로 확인
+  const isAnswered =
+    currentQ.id === "investmentKnowledge"
+      ? (formData[currentQ.id]?.answer?.length || 0) > 0
+      : !!formData[currentQ.id]?.answer;
   const progress = ((currentQuestion + 1) / questions.length) * 25 + 25; // 25% ~ 50%
 
   const renderQuestion = () => {
@@ -525,7 +684,7 @@ const ModernOnboardingStep2 = () => {
           </div>
         );
 
-      case "knowledge":
+      case "knowledge": // 'knowledge' -> 'investmentKnowledge'에 대응
         return (
           <div className="grid md:grid-cols-2 gap-3">
             {currentQ.options.map((option) => {
@@ -537,26 +696,7 @@ const ModernOnboardingStep2 = () => {
                 <button
                   key={option.value}
                   onClick={() => {
-                    const currentAnswers = Array.isArray(
-                      formData[currentQ.id]?.answer
-                    )
-                      ? formData[currentQ.id].answer
-                      : [];
-
-                    let newAnswers, newScore;
-                    if (isSelected) {
-                      newAnswers = currentAnswers.filter(
-                        (a) => a !== option.value
-                      );
-                      newScore =
-                        (formData[currentQ.id]?.score || 0) - option.score;
-                    } else {
-                      newAnswers = [...currentAnswers, option.value];
-                      newScore =
-                        (formData[currentQ.id]?.score || 0) + option.score;
-                    }
-
-                    handleAnswer(currentQ.id, newAnswers, newScore);
+                    handleAnswer(currentQ.id, option.value, option.score); // handleAnswer에서 배열 처리
                   }}
                   className={`p-4 rounded-xl border text-left transition-all ${
                     isSelected
@@ -647,7 +787,7 @@ const ModernOnboardingStep2 = () => {
           )}
 
           <button
-            onClick={handleNext}
+            onClick={handleNextQuestion} // handleNextQuestion으로 변경
             disabled={!isAnswered}
             className={`ml-auto px-8 py-3 rounded-xl font-bold transition-all flex items-center space-x-2 ${
               isAnswered

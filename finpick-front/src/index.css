@@ -1,6 +1,9 @@
+/* 📁 finpick-front/src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 커스텀 스타일 (필요시 추가) */
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
