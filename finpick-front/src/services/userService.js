@@ -7,13 +7,15 @@ import {
   updateDoc,
   addDoc,
   serverTimestamp,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
 export class UserService {
-  /**
-   * 새 사용자 초기 프로필 생성
-   */
   static async createUserProfile(user) {
     const userRef = doc(db, "users", user.uid);
 
@@ -29,6 +31,8 @@ export class UserService {
 
       isActive: true,
       deactivatedAt: null,
+      dataVersion: "2.0",
+      schemaVersion: "2025.1",
       activityScore: 0,
 
       onboardingStatus: {
@@ -49,13 +53,97 @@ export class UserService {
       financialStatus: null,
       investmentGoals: null,
 
-      dataVersion: "1.0",
-      schemaVersion: "2024.1",
+      preferences: {
+        inferredPreferences: {
+          source: "default",
+          lastUpdatedAt: serverTimestamp(),
+          confidence: 0.5,
+          updateStrategy: "behavioral_learning",
+          productTypePreference: {
+            deposit: 0.6,
+            savings: 0.7,
+            loan: 0.3,
+            investment: 0.4,
+          },
+          riskReturnWeight: {
+            safety: 0.7,
+            profitability: 0.4,
+            liquidity: 0.5,
+          },
+          conveniencePreference: {
+            온라인가입: 1.0,
+            영업점가입: 0.3,
+            모바일전용: 0.9,
+          },
+        },
+        explicitPreferences: {
+          bankPreferences: [],
+          productCategories: [],
+          communicationChannels: [],
+          notificationSettings: {
+            newProducts: true,
+            rateChanges: true,
+            goalReminders: true,
+          },
+        },
+      },
+
+      behaviorAnalytics: {
+        recommendationHistory: [],
+        interactionPatterns: {
+          totalSessions: 0,
+          avgSessionDuration: 0,
+          lastActiveAt: serverTimestamp(),
+          frequentActions: [],
+          searchPatterns: [],
+          clickThrough: {
+            totalRecommendations: 0,
+            totalClicks: 0,
+            rate: 0,
+          },
+        },
+        satisfactionData: {
+          averageRating: 0,
+          totalRatings: 0,
+          feedbackHistory: [],
+        },
+      },
+
+      searchableFields: {
+        ageGroup: null,
+        incomeRange: {
+          min: 0,
+          max: 0,
+          category: null,
+        },
+        riskLevel: 3,
+        primaryGoal: null,
+        occupation: null,
+        residence: null,
+        familyStatus: null,
+        lastUpdated: serverTimestamp(),
+      },
+
+      aiLearningData: {
+        userSegment: null,
+        personalityVector: [],
+        behaviorSignals: {
+          riskAppetite: 0.5,
+          pricesensitivity: 0.5,
+          brandLoyalty: 0.5,
+          digitalAdoption: 0.5,
+        },
+        predictionModels: {
+          nextBestAction: null,
+          churnRisk: 0.1,
+          lifetimeValue: 0,
+          goalAchievementProbability: 0.7,
+        },
+      },
     };
 
     try {
       await setDoc(userRef, initialProfile);
-      console.log("사용자 프로필 생성 완료:", user.uid);
       return initialProfile;
     } catch (error) {
       console.error("사용자 프로필 생성 실패:", error);
@@ -63,9 +151,6 @@ export class UserService {
     }
   }
 
-  /**
-   * 사용자 프로필 조회
-   */
   static async getUserProfile(userId) {
     try {
       const userRef = doc(db, "users", userId);
@@ -82,33 +167,22 @@ export class UserService {
     }
   }
 
-  /**
-   * 로그인 시간 업데이트
-   */
-  static async updateLastLogin(userId) {
-    try {
-      const userRef = doc(db, "users", userId);
-      await updateDoc(userRef, {
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error("로그인 시간 업데이트 실패:", error);
-    }
-  }
-
-  /**
-   * 1단계: 기본 정보 저장
-   */
   static async saveBasicInfo(userId, basicInfoData) {
     try {
       const userRef = doc(db, "users", userId);
+
+      const normalizedData = this.normalizeBasicInfo(basicInfoData);
 
       const updateData = {
         basicInfo: {
           ...basicInfoData,
           completedAt: serverTimestamp(),
         },
+        "searchableFields.ageGroup": this.getAgeGroup(basicInfoData.age),
+        "searchableFields.occupation": basicInfoData.occupation,
+        "searchableFields.residence": basicInfoData.residence,
+        "searchableFields.familyStatus": basicInfoData.maritalStatus,
+        "searchableFields.lastUpdated": serverTimestamp(),
         "onboardingStatus.stepsCompleted.step1": true,
         "onboardingStatus.currentStep": 2,
         "onboardingStatus.lastActiveAt": serverTimestamp(),
@@ -116,13 +190,11 @@ export class UserService {
       };
 
       await updateDoc(userRef, updateData);
-
       await this.logUserActivity(userId, "onboarding_step1_completed", {
         completionTime: Date.now(),
         dataFields: Object.keys(basicInfoData),
       });
 
-      console.log("1단계 기본정보 저장 완료");
       return updateData;
     } catch (error) {
       console.error("기본정보 저장 실패:", error);
@@ -130,21 +202,27 @@ export class UserService {
     }
   }
 
-  /**
-   * 2단계: 투자 성향 저장
-   */
-  static async saveInvestmentProfile(userId, investmentData) {
+  static async saveInvestmentProfile(userId, investmentProfileData) {
     try {
       const userRef = doc(db, "users", userId);
 
-      const riskLevel = this.calculateRiskLevel(investmentData.totalScore);
+      const riskLevel = this.calculateRiskLevel(
+        investmentProfileData.totalScore
+      );
 
       const updateData = {
         investmentProfile: {
-          ...investmentData,
+          ...investmentProfileData,
           riskLevel,
           completedAt: serverTimestamp(),
         },
+        "searchableFields.riskLevel": riskLevel.level,
+        "searchableFields.lastUpdated": serverTimestamp(),
+        "aiLearningData.behaviorSignals.riskAppetite": riskLevel.level / 5,
+        "preferences.inferredPreferences.riskReturnWeight.safety":
+          riskLevel.level <= 2 ? 0.8 : 0.4,
+        "preferences.inferredPreferences.riskReturnWeight.profitability":
+          riskLevel.level >= 4 ? 0.8 : 0.4,
         "onboardingStatus.stepsCompleted.step2": true,
         "onboardingStatus.currentStep": 3,
         "onboardingStatus.lastActiveAt": serverTimestamp(),
@@ -152,13 +230,11 @@ export class UserService {
       };
 
       await updateDoc(userRef, updateData);
-
       await this.logUserActivity(userId, "onboarding_step2_completed", {
-        riskScore: investmentData.totalScore,
         riskLevel: riskLevel.level,
+        totalScore: investmentProfileData.totalScore,
       });
 
-      console.log("2단계 투자성향 저장 완료");
       return updateData;
     } catch (error) {
       console.error("투자성향 저장 실패:", error);
@@ -166,14 +242,12 @@ export class UserService {
     }
   }
 
-  /**
-   * 3단계: 재무 상황 저장
-   */
   static async saveFinancialStatus(userId, financialData) {
     try {
       const userRef = doc(db, "users", userId);
 
       const financialHealth = this.calculateFinancialHealth(financialData);
+      const incomeRange = this.parseIncomeRange(financialData.monthlyIncome);
 
       const updateData = {
         financialStatus: {
@@ -181,6 +255,10 @@ export class UserService {
           financialHealth,
           completedAt: serverTimestamp(),
         },
+        "searchableFields.incomeRange": incomeRange,
+        "searchableFields.lastUpdated": serverTimestamp(),
+        "aiLearningData.behaviorSignals.pricesensitivity":
+          this.calculatePriceSensitivity(financialData),
         "onboardingStatus.stepsCompleted.step3": true,
         "onboardingStatus.currentStep": 4,
         "onboardingStatus.lastActiveAt": serverTimestamp(),
@@ -188,13 +266,11 @@ export class UserService {
       };
 
       await updateDoc(userRef, updateData);
-
       await this.logUserActivity(userId, "onboarding_step3_completed", {
         financialHealthStatus: financialHealth.status,
         savingsRate: financialHealth.savingsRate,
       });
 
-      console.log("3단계 재무상황 저장 완료");
       return updateData;
     } catch (error) {
       console.error("재무상황 저장 실패:", error);
@@ -202,14 +278,11 @@ export class UserService {
     }
   }
 
-  /**
-   * 4단계: 투자 목표 저장 및 온보딩 완료
-   */
   static async saveInvestmentGoals(userId, goalsData) {
     try {
       const userRef = doc(db, "users", userId);
-
       const userProfile = await this.getUserProfile(userId);
+
       const personalizedResult = await this.generatePersonalizedRecommendation(
         userProfile,
         goalsData
@@ -221,6 +294,12 @@ export class UserService {
           personalizedResult,
           completedAt: serverTimestamp(),
         },
+        "searchableFields.primaryGoal": goalsData.primaryGoals?.[0]?.value,
+        "searchableFields.lastUpdated": serverTimestamp(),
+        "aiLearningData.userSegment": this.calculateUserSegment(
+          userProfile,
+          goalsData
+        ),
         "onboardingStatus.isCompleted": true,
         "onboardingStatus.stepsCompleted.step4": true,
         "onboardingStatus.currentStep": 4,
@@ -231,16 +310,12 @@ export class UserService {
       };
 
       await updateDoc(userRef, updateData);
-
       await this.logUserActivity(userId, "onboarding_completed", {
         totalCompletionTime: Date.now(),
         finalRiskLevel: userProfile.investmentProfile?.riskLevel?.level,
         primaryGoal: goalsData.primaryGoals?.[0]?.value,
       });
 
-      await this.createInitialUserPreferences(userId, userProfile, goalsData);
-
-      console.log("온보딩 완전 완료!");
       return updateData;
     } catch (error) {
       console.error("투자목표 저장 실패:", error);
@@ -248,9 +323,168 @@ export class UserService {
     }
   }
 
-  /**
-   * 사용자 활동 로깅
-   */
+  static async recordRecommendationInteraction(
+    userId,
+    recommendationId,
+    products,
+    action,
+    metadata = {}
+  ) {
+    try {
+      const userRef = doc(db, "users", userId);
+      const userProfile = await this.getUserProfile(userId);
+
+      const interaction = {
+        id: crypto.randomUUID(),
+        timestamp: serverTimestamp(),
+        recommendationId,
+        products: products.map((p) => ({
+          productId: p.id,
+          productType: p.type,
+          bank: p.bank,
+          interestRate: p.rate,
+        })),
+        action, // 'view', 'click', 'save', 'ignore', 'convert'
+        metadata,
+        sessionId: this.getSessionId(),
+      };
+
+      const currentHistory =
+        userProfile.behaviorAnalytics?.recommendationHistory || [];
+      const updatedHistory = [...currentHistory, interaction].slice(-100); // 최근 100개만 유지
+
+      const clickThroughData = this.calculateClickThroughRate(updatedHistory);
+
+      const updateData = {
+        "behaviorAnalytics.recommendationHistory": updatedHistory,
+        "behaviorAnalytics.interactionPatterns.clickThrough": clickThroughData,
+        "behaviorAnalytics.interactionPatterns.lastActiveAt": serverTimestamp(),
+        "aiLearningData.behaviorSignals.digitalAdoption": Math.min(
+          1.0,
+          userProfile.aiLearningData?.behaviorSignals?.digitalAdoption + 0.01
+        ),
+        updatedAt: serverTimestamp(),
+      };
+
+      await updateDoc(userRef, updateData);
+      await this.updateUserSegment(userId);
+
+      return interaction;
+    } catch (error) {
+      console.error("추천 상호작용 기록 실패:", error);
+      throw error;
+    }
+  }
+
+  static async recordSatisfactionFeedback(
+    userId,
+    recommendationId,
+    rating,
+    feedback = ""
+  ) {
+    try {
+      const userRef = doc(db, "users", userId);
+      const userProfile = await this.getUserProfile(userId);
+
+      const feedbackEntry = {
+        id: crypto.randomUUID(),
+        timestamp: serverTimestamp(),
+        recommendationId,
+        rating, // 1-5
+        feedback,
+        sessionId: this.getSessionId(),
+      };
+
+      const currentFeedback =
+        userProfile.behaviorAnalytics?.satisfactionData?.feedbackHistory || [];
+      const updatedFeedback = [...currentFeedback, feedbackEntry].slice(-50);
+
+      const newAverageRating = this.calculateAverageRating(updatedFeedback);
+
+      const updateData = {
+        "behaviorAnalytics.satisfactionData.feedbackHistory": updatedFeedback,
+        "behaviorAnalytics.satisfactionData.averageRating": newAverageRating,
+        "behaviorAnalytics.satisfactionData.totalRatings":
+          updatedFeedback.length,
+        updatedAt: serverTimestamp(),
+      };
+
+      await updateDoc(userRef, updateData);
+      await this.updateUserSegment(userId);
+
+      return feedbackEntry;
+    } catch (error) {
+      console.error("만족도 피드백 기록 실패:", error);
+      throw error;
+    }
+  }
+
+  static async findSimilarUsers(userId, limit = 10) {
+    try {
+      const userProfile = await this.getUserProfile(userId);
+      const searchFields = userProfile.searchableFields;
+
+      const similarUsersQuery = query(
+        collection(db, "users"),
+        where("searchableFields.ageGroup", "==", searchFields.ageGroup),
+        where("searchableFields.riskLevel", "==", searchFields.riskLevel),
+        where("onboardingStatus.isCompleted", "==", true),
+        orderBy("behaviorAnalytics.satisfactionData.averageRating", "desc"),
+        limit(limit)
+      );
+
+      const snapshot = await getDocs(similarUsersQuery);
+      return snapshot.docs
+        .map((doc) => doc.data())
+        .filter((user) => user.userId !== userId);
+    } catch (error) {
+      console.error("유사 사용자 검색 실패:", error);
+      return [];
+    }
+  }
+
+  static async generatePersonalizedRecommendation(userProfile, goalsData) {
+    const riskLevel = userProfile.investmentProfile?.riskLevel?.level || 3;
+    const primaryGoal = goalsData.primaryGoals?.[0]?.value;
+    const behaviorSignals = userProfile.aiLearningData?.behaviorSignals || {};
+
+    return {
+      source: "AI_generated_v2",
+      generatedAt: serverTimestamp(),
+      modelVersion: "collaborative-filtering-v2.1",
+      recommendationLogic: "hybrid_collaborative_content",
+
+      userSegment: this.calculateUserSegment(userProfile, goalsData),
+      personalityScore: {
+        conservatism: behaviorSignals.riskAppetite || 0.5,
+        digitalSavvy: behaviorSignals.digitalAdoption || 0.5,
+        priceConsciousness: behaviorSignals.pricesensitivity || 0.5,
+      },
+
+      monthlyTarget:
+        this.parseRange(userProfile.financialStatus?.monthlyInvestment) || 300,
+      successRate: Math.min(95, 60 + riskLevel * 8),
+      confidenceScore: this.calculateConfidenceScore(userProfile),
+
+      strategy: this.getRecommendationStrategy(
+        riskLevel,
+        primaryGoal,
+        behaviorSignals
+      ),
+      recommendedProducts: this.getRecommendedProducts(riskLevel, primaryGoal),
+
+      goalBasedAllocation: {
+        primaryGoals:
+          goalsData.primaryGoals?.map((goal, index) => ({
+            goal: goal.value,
+            allocation: index === 0 ? 0.6 : 0.4,
+            monthlyAmount: index === 0 ? 300 : 200,
+            confidenceScore: 0.9 - index * 0.1,
+          })) || [],
+      },
+    };
+  }
+
   static async logUserActivity(userId, activityType, details = {}) {
     try {
       const activitiesRef = collection(db, "users", userId, "activities");
@@ -275,69 +509,45 @@ export class UserService {
     }
   }
 
-  /**
-   * 초기 사용자 선호도 생성
-   */
-  static async createInitialUserPreferences(userId, userProfile, goalsData) {
-    try {
-      const preferencesRef = doc(db, "user_preferences", userId);
-
-      const preferences = {
-        userId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-
-        inferredPreferences: {
-          source: "onboarding_data",
-          lastUpdatedAt: serverTimestamp(),
-          confidence: 0.7,
-          updateStrategy: "onboarding_based",
-          preferenceStaleness: "fresh",
-          dataPoints: 1,
-
-          productTypePreference: this.inferProductPreference(
-            userProfile,
-            goalsData
-          ),
-
-          riskReturnWeight: {
-            safety:
-              userProfile.investmentProfile?.riskLevel?.level <= 2 ? 0.8 : 0.4,
-            profitability:
-              userProfile.investmentProfile?.riskLevel?.level >= 4 ? 0.8 : 0.4,
-          },
-
-          conveniencePreference: {
-            온라인가입: 1.0,
-            영업점가입: 0.2,
-            모바일전용: 0.9,
-          },
-        },
-
-        behaviorPatterns: {
-          decisionMaking: {
-            speed: "moderate",
-            informationNeed: "high",
-            comparisonDepth: "detailed",
-          },
-          usagePattern: {
-            preferredTime: ["오후", "야간"],
-            sessionDuration: 0,
-            frequentActions: [],
-          },
-        },
-      };
-
-      await setDoc(preferencesRef, preferences);
-      console.log("초기 사용자 선호도 생성 완료");
-    } catch (error) {
-      console.error("사용자 선호도 생성 실패:", error);
-    }
+  static normalizeBasicInfo(basicInfoData) {
+    return {
+      ageGroup: this.getAgeGroup(basicInfoData.age),
+      incomeRange: this.parseIncomeRange(basicInfoData.monthlyIncome),
+      occupation: basicInfoData.occupation,
+      residence: basicInfoData.residence,
+      familyStatus: basicInfoData.maritalStatus,
+    };
   }
 
-  /**
-   * 위험도 레벨 계산
-   */
+  static getAgeGroup(age) {
+    if (age < 25) return "20대 초반";
+    if (age < 30) return "20대 후반";
+    if (age < 35) return "30대 초반";
+    if (age < 40) return "30대 후반";
+    if (age < 45) return "40대 초반";
+    if (age < 50) return "40대 후반";
+    if (age < 60) return "50대";
+    return "60대 이상";
+  }
+
+  static parseIncomeRange(incomeString) {
+    if (!incomeString) return { min: 0, max: 0, category: "미입력" };
+
+    const matches = incomeString.match(/(\d+)/g);
+    if (!matches) return { min: 0, max: 0, category: "기타" };
+
+    const min = parseInt(matches[0]) * 10000;
+    const max = matches[1] ? parseInt(matches[1]) * 10000 : min + 1000000;
+
+    let category;
+    if (min < 2500000) category = "저소득";
+    else if (min < 5000000) category = "중소득";
+    else if (min < 8000000) category = "중고소득";
+    else category = "고소득";
+
+    return { min, max, category };
+  }
+
   static calculateRiskLevel(totalScore) {
     if (totalScore <= 6) {
       return {
@@ -387,9 +597,6 @@ export class UserService {
     }
   }
 
-  /**
-   * 재정 건전성 계산
-   */
   static calculateFinancialHealth(financialData) {
     const income = this.parseRange(financialData.monthlyIncome);
     const expense = this.parseRange(financialData.monthlyExpense);
@@ -437,45 +644,123 @@ export class UserService {
     };
   }
 
-  /**
-   * AI 기반 개인화 추천 생성
-   */
-  static async generatePersonalizedRecommendation(userProfile, goalsData) {
+  static calculateUserSegment(userProfile, goalsData) {
+    const age = userProfile.basicInfo?.age || 30;
     const riskLevel = userProfile.investmentProfile?.riskLevel?.level || 3;
-    const primaryGoal = goalsData.primaryGoals?.[0]?.value;
+    const income =
+      userProfile.searchableFields?.incomeRange?.category || "중소득";
+    const goal = goalsData.primaryGoals?.[0]?.value || "안정적 저축";
+
+    let segment = "";
+
+    if (age < 30) segment += "young_";
+    else if (age < 45) segment += "middle_";
+    else segment += "mature_";
+
+    if (income === "고소득") segment += "affluent_";
+    else if (income === "중고소득") segment += "upper_middle_";
+    else segment += "middle_";
+
+    if (riskLevel <= 2) segment += "conservative";
+    else if (riskLevel >= 4) segment += "aggressive";
+    else segment += "balanced";
+
+    return segment;
+  }
+
+  static calculatePriceSensitivity(financialData) {
+    const income = this.parseRange(financialData.monthlyIncome);
+    const investment = this.parseRange(financialData.monthlyInvestment);
+
+    const investmentRatio = investment / income;
+
+    if (investmentRatio > 0.3) return 0.3; // 낮은 가격 민감도
+    if (investmentRatio > 0.2) return 0.5; // 보통 가격 민감도
+    return 0.8; // 높은 가격 민감도
+  }
+
+  static calculateClickThroughRate(history) {
+    const totalRecommendations = history.filter(
+      (h) => h.action === "view"
+    ).length;
+    const totalClicks = history.filter((h) =>
+      ["click", "save", "convert"].includes(h.action)
+    ).length;
 
     return {
-      source: "AI_generated",
-      generatedAt: serverTimestamp(),
-      modelVersion: "goal-v1.2-rnn",
-      recommendationLogic: "multi_goal_allocation",
-
-      monthlyTarget:
-        this.parseRange(userProfile.financialStatus?.monthlyInvestment) || 300,
-      successRate: Math.min(95, 60 + riskLevel * 8),
-      riskLevel: riskLevel <= 2 ? "낮음" : riskLevel >= 4 ? "높음" : "보통",
-      strategy: riskLevel <= 2 ? "안전형 포트폴리오" : "혼합형 포트폴리오",
-
-      recommendedProducts: this.getRecommendedProducts(riskLevel, primaryGoal),
-
-      goalBasedAllocation: {
-        primaryGoals:
-          goalsData.primaryGoals?.map((goal, index) => ({
-            goal: goal.value,
-            allocation: index === 0 ? 0.6 : 0.4,
-            monthlyAmount: index === 0 ? 300 : 200,
-            confidenceScore: 0.9 - index * 0.1,
-          })) || [],
-      },
+      totalRecommendations,
+      totalClicks,
+      rate: totalRecommendations > 0 ? totalClicks / totalRecommendations : 0,
     };
   }
 
-  // 유틸리티 함수들
+  static calculateAverageRating(feedbackHistory) {
+    if (feedbackHistory.length === 0) return 0;
+
+    const sum = feedbackHistory.reduce(
+      (acc, feedback) => acc + feedback.rating,
+      0
+    );
+    return Math.round((sum / feedbackHistory.length) * 100) / 100;
+  }
+
+  static calculateConfidenceScore(userProfile) {
+    let score = 0.5; // 기본 점수
+
+    if (userProfile.onboardingStatus?.isCompleted) score += 0.2;
+    if (userProfile.behaviorAnalytics?.recommendationHistory?.length > 5)
+      score += 0.1;
+    if (userProfile.behaviorAnalytics?.satisfactionData?.averageRating > 3)
+      score += 0.1;
+    if (
+      userProfile.behaviorAnalytics?.interactionPatterns?.clickThrough?.rate >
+      0.2
+    )
+      score += 0.1;
+
+    return Math.min(1.0, score);
+  }
+
+  static getRecommendationStrategy(riskLevel, primaryGoal, behaviorSignals) {
+    if (riskLevel <= 2) return "보수적 안전 중심 포트폴리오";
+    if (riskLevel >= 4) return "적극적 성장 중심 포트폴리오";
+    return "균형잡힌 혼합형 포트폴리오";
+  }
+
+  static getRecommendedProducts(riskLevel, primaryGoal) {
+    const productMap = {
+      1: ["정기예금", "적금", "CMA"],
+      2: ["적금", "채권형펀드", "원금보장ELS"],
+      3: ["혼합형펀드", "ETF", "적금"],
+      4: ["주식형펀드", "ETF", "개별주식"],
+      5: ["성장주펀드", "파생상품", "대안투자"],
+    };
+
+    return productMap[riskLevel] || productMap[3];
+  }
+
+  static async updateUserSegment(userId) {
+    try {
+      const userProfile = await this.getUserProfile(userId);
+      const newSegment = this.calculateUserSegment(
+        userProfile,
+        userProfile.investmentGoals
+      );
+
+      await updateDoc(doc(db, "users", userId), {
+        "aiLearningData.userSegment": newSegment,
+        "aiLearningData.lastUpdated": serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("사용자 세그먼트 업데이트 실패:", error);
+    }
+  }
+
   static parseRange(rangeString) {
     if (!rangeString) return 0;
     const matches = rangeString.match(/(\d+)/g);
     if (!matches) return 0;
-    return parseInt(matches[0]);
+    return parseInt(matches[0]) * 10000;
   }
 
   static getSessionId() {
@@ -499,43 +784,5 @@ export class UserService {
         height: window.screen.height,
       },
     };
-  }
-
-  static inferProductPreference(userProfile, goalsData) {
-    const riskLevel = userProfile.investmentProfile?.riskLevel?.level || 3;
-    const primaryGoal = goalsData.primaryGoals?.[0]?.value;
-
-    if (riskLevel <= 2 || primaryGoal === "안전한 저축") {
-      return {
-        예금: 0.4,
-        적금: 0.4,
-        펀드: 0.1,
-        투자: 0.1,
-      };
-    } else if (riskLevel >= 4) {
-      return {
-        예금: 0.1,
-        적금: 0.2,
-        펀드: 0.3,
-        투자: 0.4,
-      };
-    } else {
-      return {
-        예금: 0.2,
-        적금: 0.3,
-        펀드: 0.3,
-        투자: 0.2,
-      };
-    }
-  }
-
-  static getRecommendedProducts(riskLevel, primaryGoal) {
-    if (riskLevel <= 2) {
-      return ["예금", "적금", "CMA"];
-    } else if (riskLevel >= 4) {
-      return ["주식형펀드", "ETF", "개별주식"];
-    } else {
-      return ["적금", "펀드", "ETF"];
-    }
   }
 }

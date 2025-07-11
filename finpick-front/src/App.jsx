@@ -9,6 +9,7 @@ import Step2InvestmentProfile from "./pages/onboarding/Step2InvestmentProfile";
 import Step3FinancialStatus from "./pages/onboarding/Step3FinancialStatus";
 import Step4Goals from "./pages/onboarding/Step4Goals";
 import MyPage from "./pages/main/MyPage";
+import ChatRecommendation from "./pages/main/ChatRecommendation";
 // 스크롤 초기화 컴포넌트
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -36,6 +37,8 @@ function App() {
           <Route path="/onboarding/step3" element={<Step3FinancialStatus />} />
           <Route path="/onboarding/step4" element={<Step4Goals />} />
           <Route path="/mypage" element={<MyPage />} />
+          <Route path="/chat" element={<ChatRecommendation />} />
+          <Route path="/recommendations" element={<ChatRecommendation />} />
         </Routes>
       </Router>
     </AuthProvider>

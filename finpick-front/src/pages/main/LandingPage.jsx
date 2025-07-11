@@ -1,9 +1,5 @@
-// 📁 finpick-front/src/pages/main/LandingPage.jsx
+// finpick-front/src/pages/main/FinPickLanding.jsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
-import Header from "../components/Header";
-import Footer from "../components/Footer";
 import {
   ChevronDown,
   ChevronUp,
@@ -12,15 +8,17 @@ import {
   Shield,
   Target,
   TrendingUp,
-  Zap,
-  Star,
-  Users,
   Search,
+  Zap,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import Header from "../components/layout/Header";
+import Footer from "../components/layout/Footer";
 
-const LandingPage = () => {
+const FinPickLanding = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const [openFaq, setOpenFaq] = useState(null);
 
   const toggleFaq = (index) => {
@@ -53,7 +51,6 @@ const LandingPage = () => {
     },
   ];
 
-  // 로딩 중일 때 표시
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -63,230 +60,331 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Landing 전용 Header */}
-      <Header variant="landing" showProfile={true} showNav={false} />
+    <div className="min-h-screen bg-gray-950 text-white">
+      <Header />
 
-      {/* 메인 콘텐츠 */}
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20">
-          <div className="text-center">
-            <div className="inline-flex items-center space-x-2 bg-emerald-400/10 text-emerald-400 px-4 py-2 rounded-full text-sm font-medium mb-8">
-              <Sparkles className="w-4 h-4" />
-              <span>AI 기반 맞춤 추천</span>
-            </div>
+      {/* Hero + Features Combined */}
+      <section className="py-10 lg:py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Hero Content */}
+            <div>
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-6">
+                <Sparkles className="w-3 h-3 text-emerald-400 mr-2" />
+                <span className="text-emerald-400 text-xs font-medium">
+                  AI 기반 맞춤형 금융 추천
+                </span>
+              </div>
 
-            <h1 className="text-5xl md:text-6xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                AI가 추천하는
-              </span>
-              <br />
-              맞춤형 금융상품
-            </h1>
+              <h1 className="text-4xl lg:text-5xl font-bold leading-tight mb-4">
+                <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                  나에게 딱 맞는
+                </span>
+                <br />
+                <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                  금융상품 찾기
+                </span>
+              </h1>
 
-            <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">
-              복잡한 금융 시장에서 당신만을 위한 최적의 투자 솔루션을
-              찾아드립니다. 30초만에 맞춤 상품을 추천받아보세요.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-              <button
-                onClick={handleGetStarted}
-                className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-4 rounded-xl font-bold text-lg hover:shadow-lg transform hover:scale-105 transition-all flex items-center space-x-2"
-              >
-                <span>지금 시작하기</span>
-                <ArrowRight className="w-5 h-5" />
-              </button>
-
-              <button className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors">
-                <span>데모 보기</span>
-                <div className="w-8 h-8 border border-gray-600 rounded-full flex items-center justify-center">
-                  <div className="w-0 h-0 border-l-[6px] border-l-gray-400 border-y-[4px] border-y-transparent ml-1"></div>
-                </div>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Features Section */}
-        <section id="features" className="py-20 bg-gray-900/30">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                왜 FinPick을 선택해야 할까요?
-              </h2>
-              <p className="text-gray-400 max-w-2xl mx-auto">
-                기존 금융 서비스와는 다른 혁신적인 접근으로 진정한 맞춤형 추천을
-                제공합니다.
+              <p className="text-lg text-gray-400 mb-8 leading-relaxed">
+                복잡한 조건 입력 없이 자연어로 말해보세요.
+                <br />
+                AI가 340개+ 상품 중에서 당신에게 딱 맞는 것만 골라드립니다.
               </p>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              <div className="text-center p-6">
-                <div className="w-16 h-16 bg-emerald-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Shield className="w-8 h-8 text-emerald-400" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">중립적 분석</h3>
-                <p className="text-gray-400 text-sm">
-                  금융사 수수료 없이 오직 사용자 이익만을 고려한 추천
-                </p>
-              </div>
-
-              <div className="text-center p-6">
-                <div className="w-16 h-16 bg-cyan-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Target className="w-8 h-8 text-cyan-400" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">맞춤 상품</h3>
-                <p className="text-gray-400 text-sm">
-                  개인의 투자성향과 재정상황을 분석한 완전 개인화 추천
-                </p>
-              </div>
-
-              <div className="text-center p-6">
-                <div className="w-16 h-16 bg-purple-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <TrendingUp className="w-8 h-8 text-purple-400" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">실시간 데이터</h3>
-                <p className="text-gray-400 text-sm">
-                  금융감독원 공식 API로 항상 최신 상품 정보 제공
-                </p>
-              </div>
-
-              <div className="text-center p-6">
-                <div className="w-16 h-16 bg-yellow-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Zap className="w-8 h-8 text-yellow-400" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">30초 추천</h3>
-                <p className="text-gray-400 text-sm">
-                  간단한 질문으로 빠르게 최적 상품 발견
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* How it works */}
-        <section id="how-it-works" className="py-20">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                어떻게 작동하나요?
-              </h2>
-              <p className="text-gray-400">4단계만으로 완료되는 간단한 과정</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {[
-                {
-                  step: "01",
-                  title: "기본 정보",
-                  desc: "나이, 직업, 거주지 입력",
-                },
-                {
-                  step: "02",
-                  title: "투자 성향",
-                  desc: "위험도와 투자 경험 분석",
-                },
-                {
-                  step: "03",
-                  title: "재정 상황",
-                  desc: "소득과 저축 현황 파악",
-                },
-                {
-                  step: "04",
-                  title: "목표 설정",
-                  desc: "투자 목적과 기간 결정",
-                },
-              ].map((item, index) => (
-                <div key={index} className="relative">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <span className="text-gray-900 font-bold text-lg">
-                        {item.step}
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
-                    <p className="text-gray-400 text-sm">{item.desc}</p>
-                  </div>
-                  {index < 3 && (
-                    <div className="hidden lg:block absolute top-8 left-full w-full">
-                      <ArrowRight className="w-6 h-6 text-gray-600 mx-auto" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* FAQ Section */}
-        <section id="faq" className="py-20 bg-gray-900/30">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                자주 묻는 질문
-              </h2>
-              <p className="text-gray-400">
-                궁금한 점이 있으시면 언제든 문의해주세요
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {faqData.map((faq, index) => (
-                <div
-                  key={index}
-                  className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden"
+              <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                <button
+                  className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-3 rounded-lg text-lg font-bold hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+                  onClick={handleGetStarted}
                 >
-                  <button
-                    onClick={() => toggleFaq(index)}
-                    className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-800/70 transition-colors"
+                  <span>{isAuthenticated ? "추천 받기" : "지금 시작하기"}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+                <button className="border border-gray-700 text-gray-300 px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-all">
+                  사용법 보기
+                </button>
+              </div>
+
+              {/* Quick Features */}
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { icon: <Zap className="w-4 h-4" />, text: "30초 추천" },
+                  { icon: <Shield className="w-4 h-4" />, text: "중립적 분석" },
+                  { icon: <Target className="w-4 h-4" />, text: "맞춤 상품" },
+                  {
+                    icon: <TrendingUp className="w-4 h-4" />,
+                    text: "실시간 데이터",
+                  },
+                ].map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center space-x-2 text-sm text-gray-400"
                   >
-                    <span className="font-medium">{faq.question}</span>
-                    {openFaq === index ? (
-                      <ChevronUp className="w-5 h-5 text-gray-400" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-gray-400" />
-                    )}
-                  </button>
+                    <div className="text-emerald-400">{item.icon}</div>
+                    <span>{item.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                  {openFaq === index && (
-                    <div className="px-6 pb-6">
-                      <p className="text-gray-400">{faq.answer}</p>
-                    </div>
-                  )}
+            {/* Right: Demo */}
+            <div className="relative">
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl rounded-2xl border border-gray-700/50 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex space-x-1.5">
+                    <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                    <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full"></div>
+                    <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+                  </div>
+                  <div className="text-xs text-gray-500">FinPick AI</div>
                 </div>
-              ))}
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs text-gray-500 mb-2">입력 예시:</div>
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+                      <div className="flex items-center space-x-2">
+                        <Search className="w-4 h-4 text-emerald-400" />
+                        <span className="text-emerald-300 text-sm">
+                          "월 50만원씩 2년간 안전하게 모으고 싶어요"
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      AI 추천 결과:
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-white/5 border border-gray-700/50 rounded-xl p-3 hover:bg-white/10 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-white text-sm mb-1">
+                              KB국민은행 정기적금
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              월 50만원 • 24개월
+                            </div>
+                            <div className="flex items-center mt-1">
+                              <div className="w-2 h-2 bg-emerald-400 rounded-full mr-1"></div>
+                              <span className="text-xs text-emerald-400">
+                                적합도 98%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-emerald-400">
+                              3.2%
+                            </div>
+                            <div className="text-xs text-gray-500">연이율</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/5 border border-gray-700/50 rounded-xl p-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-white text-sm mb-1">
+                              신한은행 쌓이는적금
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              월 50만원 • 24개월
+                            </div>
+                            <div className="flex items-center mt-1">
+                              <div className="w-2 h-2 bg-cyan-400 rounded-full mr-1"></div>
+                              <span className="text-xs text-cyan-400">
+                                적합도 92%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-cyan-400">
+                              3.0%
+                            </div>
+                            <div className="text-xs text-gray-500">연이율</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="w-full mt-4 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all">
+                  상세 비교 보기
+                </button>
+              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* CTA Section */}
-        <section className="py-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-            <div className="bg-gradient-to-r from-emerald-900/20 to-cyan-900/20 p-12 rounded-2xl border border-emerald-500/30">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                지금 바로 시작하세요
+      {/* How It Works & Features */}
+      <section className="py-16 border-t border-gray-800/50" id="how-it-works">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12">
+            {/* Left: How It Works */}
+            <div>
+              <h2 className="text-2xl lg:text-3xl font-bold mb-6">
+                <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                  3단계로 끝나는 간단한 과정
+                </span>
               </h2>
-              <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-                더 이상 복잡한 금융상품 비교에 시간을 낭비하지 마세요. AI가
-                당신만을 위한 최적의 상품을 찾아드립니다.
-              </p>
-              <button
-                onClick={handleGetStarted}
-                className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-4 rounded-xl font-bold text-lg hover:shadow-lg transform hover:scale-105 transition-all"
-              >
-                무료로 추천받기
-              </button>
+
+              <div className="space-y-6">
+                {[
+                  {
+                    step: "01",
+                    title: "목적 입력",
+                    description: "자연어로 원하는 것을 말해보세요",
+                    gradientClass:
+                      "bg-gradient-to-r from-emerald-400 to-emerald-500",
+                  },
+                  {
+                    step: "02",
+                    title: "AI 분석",
+                    description: "340개+ 상품에서 최적 매칭",
+                    gradientClass: "bg-gradient-to-r from-cyan-400 to-cyan-500",
+                  },
+                  {
+                    step: "03",
+                    title: "맞춤 추천",
+                    description: "적합도와 이유까지 명확하게",
+                    gradientClass: "bg-gradient-to-r from-blue-400 to-blue-500",
+                  },
+                ].map((item, index) => (
+                  <div key={index} className="flex items-start space-x-4">
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-gray-900 text-sm font-bold flex-shrink-0 ${item.gradientClass}`}
+                    >
+                      {item.step}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white mb-1">
+                        {item.title}
+                      </h3>
+                      <p className="text-sm text-gray-400">
+                        {item.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: Features */}
+            <div>
+              <h2 className="text-2xl lg:text-3xl font-bold mb-6">
+                <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                  왜 FinPick을 선택해야 할까요?
+                </span>
+              </h2>
+
+              <div className="space-y-6">
+                {[
+                  {
+                    icon: <Target className="w-8 h-8 text-emerald-400" />,
+                    title: "맞춤형 추천",
+                    description:
+                      "AI가 분석한 당신의 프로필에 딱 맞는 상품만 추천",
+                    highlight: "95% 적합도",
+                  },
+                  {
+                    icon: <Shield className="w-8 h-8 text-cyan-400" />,
+                    title: "100% 중립",
+                    description: "광고 없이 오직 사용자를 위한 객관적 추천",
+                    highlight: "수수료 없음",
+                  },
+                  {
+                    icon: <Zap className="w-8 h-8 text-blue-400" />,
+                    title: "빠른 결과",
+                    description: "복잡한 조건 입력 없이 30초 만에 추천 완료",
+                    highlight: "30초 완료",
+                  },
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">{feature.icon}</div>
+                    <div>
+                      <h3 className="font-semibold text-white mb-1">
+                        {feature.title}
+                      </h3>
+                      <p className="text-sm text-gray-400 mb-2">
+                        {feature.description}
+                      </p>
+                      <div className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="text-emerald-400 text-xs font-medium">
+                          {feature.highlight}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </section>
-      </main>
+        </div>
+      </section>
 
-      {/* Landing 전용 풀 Footer */}
-      <Footer variant="landing" />
+      {/* FAQ Section */}
+      <section id="faq" className="py-16 lg:py-20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl lg:text-4xl font-bold mb-4">
+              <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                자주 묻는 질문
+              </span>
+            </h2>
+          </div>
+
+          <div className="space-y-4">
+            {faqData.map((faq, index) => (
+              <div
+                key={index}
+                className="bg-gray-800/30 rounded-2xl border border-gray-700/50"
+              >
+                <button
+                  onClick={() => toggleFaq(index)}
+                  className="w-full flex items-center justify-between p-6 text-left"
+                >
+                  <h3 className="text-lg font-semibold text-white">
+                    {faq.question}
+                  </h3>
+                  {openFaq === index ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
+                {openFaq === index && (
+                  <div className="px-6 pb-4">
+                    <p className="text-gray-300">{faq.answer}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Final CTA */}
+          <div className="text-center bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-8 border border-gray-700/50 mt-12">
+            <h3 className="text-2xl font-bold text-white mb-4">
+              지금 바로 시작해보세요
+            </h3>
+            <p className="text-gray-400 mb-6">
+              이미 수천 명이 FinPick으로 더 나은 금융 상품을 찾았습니다
+            </p>
+            <button
+              className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-8 py-3 rounded-lg text-lg font-bold hover:shadow-lg transition-all"
+              onClick={handleGetStarted}
+            >
+              {isAuthenticated ? "추천 받기" : "무료로 시작하기"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
     </div>
   );
 };
 
-export default LandingPage;
+export default FinPickLanding;
