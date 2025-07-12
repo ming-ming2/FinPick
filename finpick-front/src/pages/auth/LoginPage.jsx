@@ -22,19 +22,28 @@ const LoginPage = () => {
     setError("");
 
     try {
+      let result;
       if (isLogin) {
-        const result = await loginWithEmail(email, password);
-        console.log("로그인 성공:", result);
+        result = await loginWithEmail(email, password);
+        console.log("✅ 로그인 성공:", result);
       } else {
-        const result = await registerWithEmail(email, password, displayName);
-        console.log("회원가입 성공:", result);
+        result = await registerWithEmail(email, password, displayName);
+        console.log("✅ 회원가입 성공:", result);
+      }
+
+      // 🔥 토큰 저장 확인
+      const savedToken = localStorage.getItem("authToken");
+      if (savedToken) {
+        console.log("✅ 토큰 저장 확인:", savedToken.substring(0, 20) + "...");
+      } else {
+        console.warn("⚠️ 토큰이 저장되지 않았습니다.");
       }
 
       // 로그인 성공 시 온보딩으로 이동
       navigate("/onboarding/step1");
     } catch (error) {
       setError(error.message);
-      console.error("Auth error:", error);
+      console.error("❌ Auth error:", error);
     } finally {
       setLoading(false);
     }
@@ -46,13 +55,24 @@ const LoginPage = () => {
 
     try {
       const result = await loginWithGoogle();
-      console.log("Google 로그인 성공:", result);
+      console.log("✅ Google 로그인 성공:", result);
+
+      // 🔥 토큰 저장 확인
+      const savedToken = localStorage.getItem("authToken");
+      if (savedToken) {
+        console.log(
+          "✅ Google 토큰 저장 확인:",
+          savedToken.substring(0, 20) + "..."
+        );
+      } else {
+        console.warn("⚠️ Google 토큰이 저장되지 않았습니다.");
+      }
 
       // 로그인 성공 시 온보딩으로 이동
       navigate("/onboarding/step1");
     } catch (error) {
       setError(error.message);
-      console.error("Google login error:", error);
+      console.error("❌ Google login error:", error);
     } finally {
       setLoading(false);
     }

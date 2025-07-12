@@ -23,6 +23,9 @@ const makeRequest = async (url, options = {}) => {
     const token = localStorage.getItem("authToken");
     if (token) {
       defaultHeaders["Authorization"] = `Bearer ${token}`;
+      console.log(`🔑 토큰 사용: ${token.substring(0, 20)}...`);
+    } else {
+      console.warn("⚠️ 토큰이 없습니다. 로그인이 필요할 수 있습니다.");
     }
 
     const config = {
@@ -52,6 +55,23 @@ const makeRequest = async (url, options = {}) => {
   }
 };
 
+// 🔧 토큰 검증 유틸리티 함수
+export const verifyAuthToken = async () => {
+  try {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      console.error("❌ 토큰이 없습니다.");
+      return false;
+    }
+
+    const response = await AuthAPI.verifyToken();
+    return response.success;
+  } catch (error) {
+    console.error("❌ 토큰 검증 실패:", error);
+    return false;
+  }
+};
+
 // 🤖 추천 관련 API
 export const RecommendationAPI = {
   // 사용자 프로필 분석
@@ -73,10 +93,28 @@ export const RecommendationAPI = {
     });
   },
 
-  // 자연어 입력 처리
+  // 자연어 입력 처리 - 🔥 원래 엔드포인트로 복원
   processNaturalLanguage: async (query) => {
+    // 토큰 확인
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      console.error("❌ 토큰이 없습니다. 로그인이 필요합니다.");
+      throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
+    }
+
     return await makeRequest(
       `${API_BASE_URL}/recommendations/natural-language`,
+      {
+        method: "POST",
+        body: JSON.stringify({ query }),
+      }
+    );
+  },
+
+  // 🔧 테스트용 엔드포인트 (백업용으로 유지)
+  processNaturalLanguageTest: async (query) => {
+    return await makeRequest(
+      `${API_BASE_URL}/recommendations/test/natural-language`,
       {
         method: "POST",
         body: JSON.stringify({ query }),
@@ -154,11 +192,17 @@ export const HealthAPI = {
   },
 };
 
-// 🎯 고수준 추천 서비스 클래스
+// 🎯 고수준 추천 서비스 클래스 - 🔥 원래 코드로 복원
 export class SmartRecommendationService {
   static async getPersonalizedRecommendations(userQuery, userProfile = null) {
     try {
       console.log("🎯 개인화 추천 요청 시작...");
+
+      // 🔥 토큰 확인 로직
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
+      }
 
       // 1단계: 자연어 처리
       console.log("1️⃣ 자연어 분석 중...");
@@ -218,6 +262,12 @@ export const ApiUtils = {
     }
   },
 
+  // 인증 상태 확인
+  checkAuthStatus: () => {
+    const token = localStorage.getItem("authToken");
+    return !!token;
+  },
+
   // 에러 메시지 포맷팅
   formatErrorMessage: (error) => {
     if (typeof error === "string") return error;
@@ -239,4 +289,5 @@ export default {
   HealthAPI,
   SmartRecommendationService,
   ApiUtils,
+  verifyAuthToken,
 };

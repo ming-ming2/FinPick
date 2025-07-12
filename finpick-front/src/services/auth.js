@@ -23,6 +23,10 @@ export const loginWithEmail = async (email, password) => {
     );
     const token = await userCredential.user.getIdToken();
 
+    // 🔥 토큰을 localStorage에 저장
+    localStorage.setItem("authToken", token);
+    console.log("✅ 토큰 저장 완료:", token.substring(0, 20) + "...");
+
     // 백엔드에 토큰 검증 요청
     const response = await fetch(`${API_BASE_URL}/auth/verify-token`, {
       method: "POST",
@@ -48,6 +52,10 @@ export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const token = await result.user.getIdToken();
+
+    // 🔥 토큰을 localStorage에 저장
+    localStorage.setItem("authToken", token);
+    console.log("✅ Google 토큰 저장 완료:", token.substring(0, 20) + "...");
 
     // 백엔드에 토큰 검증 요청
     const response = await fetch(`${API_BASE_URL}/auth/verify-token`, {
@@ -79,6 +87,10 @@ export const registerWithEmail = async (email, password, displayName) => {
     );
     const token = await userCredential.user.getIdToken();
 
+    // 🔥 토큰을 localStorage에 저장
+    localStorage.setItem("authToken", token);
+    console.log("✅ 회원가입 토큰 저장 완료:", token.substring(0, 20) + "...");
+
     return { user: userCredential.user, token };
   } catch (error) {
     throw error;
@@ -88,9 +100,30 @@ export const registerWithEmail = async (email, password, displayName) => {
 // 로그아웃
 export const logout = async () => {
   try {
+    // 🔥 localStorage에서 토큰 제거
+    localStorage.removeItem("authToken");
+    console.log("✅ 토큰 제거 완료");
+
     await signOut(auth);
   } catch (error) {
     throw error;
+  }
+};
+
+// 토큰 갱신 함수 추가
+export const refreshAuthToken = async () => {
+  try {
+    const user = auth.currentUser;
+    if (user) {
+      const token = await user.getIdToken(true); // force refresh
+      localStorage.setItem("authToken", token);
+      console.log("✅ 토큰 갱신 완료:", token.substring(0, 20) + "...");
+      return token;
+    }
+    return null;
+  } catch (error) {
+    console.error("❌ 토큰 갱신 실패:", error);
+    return null;
   }
 };
 

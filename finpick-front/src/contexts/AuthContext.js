@@ -27,6 +27,18 @@ export const AuthProvider = ({ children }) => {
         if (firebaseUser) {
           setUser(firebaseUser);
 
+          // 🔥 토큰 가져와서 localStorage에 저장
+          try {
+            const token = await firebaseUser.getIdToken();
+            localStorage.setItem("authToken", token);
+            console.log(
+              "✅ AuthContext에서 토큰 저장:",
+              token.substring(0, 20) + "..."
+            );
+          } catch (tokenError) {
+            console.error("❌ 토큰 저장 실패:", tokenError);
+          }
+
           // Firestore에서 사용자 프로필 실시간 구독
           const userDocRef = doc(db, "users", firebaseUser.uid);
 
@@ -56,6 +68,10 @@ export const AuthProvider = ({ children }) => {
           // 컴포넌트 언마운트시 프로필 구독 해제
           return () => unsubscribeProfile();
         } else {
+          // 🔥 로그아웃 시 토큰 제거
+          localStorage.removeItem("authToken");
+          console.log("✅ AuthContext에서 토큰 제거");
+
           setUser(null);
           setUserProfile(null);
         }
@@ -72,6 +88,10 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      // 🔥 로그아웃 시 토큰 제거
+      localStorage.removeItem("authToken");
+      console.log("✅ 로그아웃: 토큰 제거");
+
       await signOut(auth);
       setUser(null);
       setUserProfile(null);
@@ -95,6 +115,25 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // 🔥 토큰 갱신 함수 추가
+  const refreshToken = async () => {
+    if (!user) return null;
+
+    try {
+      const token = await user.getIdToken(true); // force refresh
+      localStorage.setItem("authToken", token);
+      console.log(
+        "✅ AuthContext에서 토큰 갱신:",
+        token.substring(0, 20) + "..."
+      );
+      return token;
+    } catch (err) {
+      console.error("토큰 갱신 실패:", err);
+      setError(err.message);
+      return null;
+    }
+  };
+
   const value = {
     user,
     userProfile,
@@ -103,6 +142,7 @@ export const AuthProvider = ({ children }) => {
     error,
     logout,
     refreshUserProfile,
+    refreshToken, // 🔥 토큰 갱신 함수 추가
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

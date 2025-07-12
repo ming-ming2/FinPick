@@ -437,10 +437,51 @@ class RecommendationService:
             return 0
     
     async def _create_ai_recommendation(self, product_data: Dict, profile: Optional[UserProfile]) -> ProductRecommendation:
-        """AI 강화 ProductRecommendation 객체 생성"""
+        """AI 강화 ProductRecommendation 객체 생성 - 🔥 타입 매핑 수정"""
         details = product_data.get('details', {})
         provider = product_data.get('provider', {})
         conditions = product_data.get('conditions', {})
+        
+        # 🔥 상품 타입 매핑 함수 추가
+        def map_product_type(original_type: str) -> str:
+            """원본 타입을 Enum에 맞게 매핑"""
+            type_mapping = {
+                '예금': '정기예금',
+                '정기예금': '정기예금',
+                '적금': '적금',
+                '대출': '대출',
+                '신용대출': '대출',
+                '주택담보대출': '대출',
+                '마이너스대출': '대출',
+                '투자': '투자상품',
+                '투자상품': '투자상품',
+                '펀드': '투자상품',
+                'ETF': '투자상품',
+            }
+            
+            # 정확히 매칭되는 것이 있으면 사용
+            if original_type in type_mapping:
+                return type_mapping[original_type]
+            
+            # 부분 매칭 시도
+            original_lower = original_type.lower()
+            if '예금' in original_lower:
+                return '정기예금'
+            elif '적금' in original_lower:
+                return '적금'
+            elif '대출' in original_lower:
+                return '대출'
+            elif '투자' in original_lower or '펀드' in original_lower:
+                return '투자상품'
+            else:
+                # 기본값
+                return '정기예금'
+        
+        # 🔥 타입 안전하게 매핑
+        original_type = product_data.get('type', '정기예금')
+        mapped_type = map_product_type(original_type)
+        
+        print(f"🔧 타입 매핑: '{original_type}' → '{mapped_type}'")
         
         # 🤖 AI 추천 이유 생성
         if self.use_ai and self.gemini_service and profile:
@@ -462,27 +503,59 @@ class RecommendationService:
         
         pros, cons = self._generate_pros_cons(product_data, profile)
         
-        return ProductRecommendation(
-            product_id=product_data.get('id', ''),
-            name=product_data.get('name', ''),
-            type=product_data.get('type', ''),
-            bank=provider.get('name', ''),
-            interest_rate=details.get('interest_rate', 0),
-            max_interest_rate=details.get('max_interest_rate'),
-            minimum_amount=details.get('minimum_amount', 0),
-            maximum_amount=details.get('maximum_amount'),
-            available_periods=details.get('available_periods', [12, 24, 36]),
-            match_score=product_data.get('match_score', 0),
-            recommendation_reason=recommendation_reason,
-            pros=pros,
-            cons=cons,
-            join_conditions={
-                "join_way": conditions.get('join_way', []),
-                "join_member": conditions.get('join_member', ''),
-                "special_conditions": conditions.get('special_conditions', '')
-            },
-            special_benefits=[]
-        )
+        # 🔥 안전한 데이터 추출
+        product_name = product_data.get('name', '상품명 없음')
+        bank_name = provider.get('name', '은행명 없음')
+        interest_rate = float(details.get('interest_rate', 0))
+        minimum_amount = int(details.get('minimum_amount', 100000))
+        match_score = float(product_data.get('match_score', 75))
+        
+        try:
+            return ProductRecommendation(
+                product_id=product_data.get('id', f'prod_{hash(product_name)}'),
+                name=product_name,
+                type=mapped_type,  # 🔥 매핑된 타입 사용
+                bank=bank_name,
+                interest_rate=interest_rate,
+                max_interest_rate=details.get('max_interest_rate'),
+                minimum_amount=minimum_amount,
+                maximum_amount=details.get('maximum_amount'),
+                available_periods=details.get('available_periods', [12, 24, 36]),
+                match_score=match_score,
+                recommendation_reason=recommendation_reason,
+                pros=pros,
+                cons=cons,
+                join_conditions={
+                    "join_way": conditions.get('join_way', []) if isinstance(conditions.get('join_way'), list) else [],
+                    "join_member": str(conditions.get('join_member', '')),
+                    "special_conditions": str(conditions.get('special_conditions', ''))
+                },
+                special_benefits=[]
+            )
+        except Exception as e:
+            print(f"❌ ProductRecommendation 생성 실패: {e}")
+            print(f"    상품 데이터: {product_data}")
+            
+            # 🔥 안전한 폴백 객체 생성
+            return ProductRecommendation(
+                product_id=f'fallback_{hash(str(product_data))}',
+                name=product_name,
+                type='정기예금',  # 안전한 기본값
+                bank=bank_name,
+                interest_rate=interest_rate,
+                minimum_amount=minimum_amount,
+                available_periods=[12],
+                match_score=50,  # 기본 점수
+                recommendation_reason="상품 정보 처리 중 오류가 발생했습니다.",
+                pros=["안전한 금융상품"],
+                cons=["상세 정보 확인 필요"],
+                join_conditions={
+                    "join_way": [],
+                    "join_member": "",
+                    "special_conditions": ""
+                },
+                special_benefits=[]
+            )
     
     def _generate_recommendation_reason(self, product: Dict, profile: Optional[UserProfile]) -> str:
         """추천 이유 생성"""

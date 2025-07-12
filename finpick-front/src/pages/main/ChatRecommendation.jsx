@@ -298,13 +298,30 @@ const FinPickPremiumMap = () => {
     return typeMap[backendType] || "savings"; // 기본값 'savings'
   };
 
-  // 🔧 상품 유형을 기반으로 도메인 추론
+  // 🔧 상품 유형을 기반으로 도메인 추론 - 🔥 오류 수정
   const inferDomain = (productType) => {
-    if (productType.includes("예금") || productType.includes("적금")) {
+    // 🔥 productType이 undefined이거나 null인 경우 기본값 처리
+    if (!productType || typeof productType !== "string") {
+      console.warn("⚠️ productType이 정의되지 않음:", productType);
+      return "특화상품"; // 기본값 반환
+    }
+
+    const type = productType.toLowerCase();
+
+    if (
+      type.includes("예금") ||
+      type.includes("적금") ||
+      type.includes("deposit") ||
+      type.includes("savings")
+    ) {
       return "예금/적금";
-    } else if (productType.includes("대출")) {
+    } else if (type.includes("대출") || type.includes("loan")) {
       return "대출상품";
-    } else if (productType.includes("투자") || productType.includes("펀드")) {
+    } else if (
+      type.includes("투자") ||
+      type.includes("펀드") ||
+      type.includes("investment")
+    ) {
       return "투자상품";
     } else {
       return "특화상품";
@@ -318,25 +335,47 @@ const FinPickPremiumMap = () => {
     return Math.max(1, Math.floor(minAmount / 10000 / 10));
   };
 
-  // 🎯 도메인 기반 핀 위치 생성
+  // 🎯 도메인 기반 핀 위치 생성 - 🔥 안전성 강화
   const generatePinPositions = (products) => {
-    return products.map((product) => {
-      const hub =
-        financialHubs.find((h) =>
-          h.keywords.some(
-            (keyword) =>
-              product.name.toLowerCase().includes(keyword) ||
-              (product.type &&
-                product.type.toLowerCase().includes(keyword.toLowerCase())) || // Ensure product.type is defined
-              h.name === product.domain
-          )
-        ) || financialHubs[0]; // Default to the first hub if no match
+    if (!Array.isArray(products)) {
+      console.error(
+        "❌ generatePinPositions: products가 배열이 아님:",
+        products
+      );
+      return [];
+    }
 
-      return {
-        ...product,
-        x: hub.x + (Math.random() - 0.5) * 15,
-        y: hub.y + (Math.random() - 0.5) * 15,
-      };
+    return products.map((product) => {
+      try {
+        const hub =
+          financialHubs.find((h) =>
+            h.keywords.some((keyword) => {
+              const productName = (product.name || "").toLowerCase();
+              const productType = (product.type || "").toLowerCase();
+              const productDomain = product.domain || "";
+
+              return (
+                productName.includes(keyword.toLowerCase()) ||
+                productType.includes(keyword.toLowerCase()) ||
+                h.name === productDomain
+              );
+            })
+          ) || financialHubs[0]; // 기본값으로 첫 번째 허브 사용
+
+        return {
+          ...product,
+          x: hub.x + (Math.random() - 0.5) * 15,
+          y: hub.y + (Math.random() - 0.5) * 15,
+        };
+      } catch (error) {
+        console.error("❌ 핀 위치 생성 오류:", error, product);
+        // 오류 시 기본 위치 반환
+        return {
+          ...product,
+          x: financialHubs[0].x + (Math.random() - 0.5) * 15,
+          y: financialHubs[0].y + (Math.random() - 0.5) * 15,
+        };
+      }
     });
   };
 
@@ -418,7 +457,51 @@ const FinPickPremiumMap = () => {
     }, 2500); // Simulate API delay
   };
 
-  // 🤖 메인 API 연동 메시지 처리 함수
+  // 🔧 백엔드 데이터를 프론트엔드 형식으로 변환 - 🔥 안전성 강화
+  const convertBackendProducts = (products) => {
+    if (!Array.isArray(products)) {
+      console.error("❌ products가 배열이 아님:", products);
+      return [];
+    }
+
+    return products.map((product, index) => {
+      try {
+        return {
+          id: product.product_id || `product_${Date.now()}_${index}`,
+          name: product.product_name || product.name || "상품명 미제공",
+          type: mapProductType(
+            product.product_type || product.type || "savings"
+          ),
+          rate: product.interest_rate || 0,
+          minAmount: Math.floor((product.minimum_amount || 100000) / 10000),
+          suitability: Math.round(product.match_score || 75),
+          reason: product.recommendation_reason || "추천 이유 없음",
+          monthlyAmount: estimateMonthlyAmount(product),
+          bank: product.bank_name || product.bank || "은행명 미제공",
+          domain: inferDomain(
+            product.product_type || product.type || "savings"
+          ), // 🔥 안전한 호출
+        };
+      } catch (error) {
+        console.error("❌ 상품 변환 오류:", error, product);
+        // 오류 발생 시 기본 상품 반환
+        return {
+          id: `error_product_${Date.now()}_${index}`,
+          name: "상품 정보 오류",
+          type: "savings",
+          rate: 0,
+          minAmount: 10,
+          suitability: 50,
+          reason: "상품 정보를 불러오는데 오류가 발생했습니다.",
+          monthlyAmount: 10,
+          bank: "정보 없음",
+          domain: "특화상품",
+        };
+      }
+    });
+  };
+
+  // 🤖 메인 API 연동 메시지 처리 함수 - 🔥 오류 처리 강화
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -437,36 +520,26 @@ const FinPickPremiumMap = () => {
     setPins([]);
     setSelectedPin(null);
     setApiError(null);
-    setShowChat(false); // Hide chat when message is sent
+    setShowChat(false);
 
     try {
       if (serverConnected) {
-        // 🚀 실제 백엔드 API 호출
         console.log("🤖 백엔드 AI 추천 요청...");
 
         const response =
           await SmartRecommendationService.getPersonalizedRecommendations(
             currentQuery,
-            null // 나중에 사용자 프로필 추가
+            null
           );
 
         if (response.success) {
-          // API 응답에서 상품 데이터 추출
-          const products = response.data.products || [];
+          // 🔥 안전한 데이터 추출 및 변환
+          const products = response.data?.products || [];
+          console.log("📦 받은 상품 데이터:", products);
 
-          // 백엔드 데이터를 프론트엔드 형식으로 변환
-          const convertedProducts = products.map((product) => ({
-            id: product.product_id,
-            name: product.name,
-            type: mapProductType(product.type),
-            rate: product.interest_rate,
-            minAmount: Math.floor(product.minimum_amount / 10000),
-            suitability: Math.round(product.match_score),
-            reason: product.recommendation_reason,
-            monthlyAmount: estimateMonthlyAmount(product),
-            bank: product.bank,
-            domain: inferDomain(product.type),
-          }));
+          // 🔥 안전한 변환 함수 사용
+          const convertedProducts = convertBackendProducts(products);
+          console.log("🔄 변환된 상품 데이터:", convertedProducts);
 
           setIsLoading(false);
 
@@ -490,7 +563,6 @@ const FinPickPremiumMap = () => {
           throw new Error(response.error);
         }
       } else {
-        // 🔄 서버 연결 안됨 - 더미 데이터 사용
         console.warn("⚠️ 서버 미연결 - 더미 데이터 사용");
         await handleFallbackRecommendation(currentQuery);
       }
@@ -498,7 +570,8 @@ const FinPickPremiumMap = () => {
       console.error("❌ 추천 요청 실패:", error);
       setApiError(ApiUtils.formatErrorMessage(error));
 
-      // 에러 시 폴백으로 더미 데이터 사용
+      // 🔥 에러 시 안전한 폴백
+      console.log("🔄 폴백 모드: 더미 데이터 사용");
       await handleFallbackRecommendation(currentQuery);
     }
   };

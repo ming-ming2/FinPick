@@ -20,11 +20,45 @@ class RiskTolerance(str, Enum):
     AGGRESSIVE = "수익 추구형"
 
 class ProductType(str, Enum):
-    """상품 타입"""
+    """상품 타입 - 🔥 더 많은 타입 지원"""
     DEPOSIT = "정기예금"
-    SAVINGS = "적금"
+    SAVINGS = "적금"  
     LOAN = "대출"
     INVESTMENT = "투자상품"
+    
+    # 🔥 추가 타입들 (데이터에서 실제로 사용되는 타입들)
+    DEPOSIT_ALT = "예금"          # 대안 표현
+    CREDIT_LOAN = "신용대출"        # 세부 대출 타입
+    MORTGAGE_LOAN = "주택담보대출"   # 주택담보대출
+    MINUS_LOAN = "마이너스대출"      # 마이너스대출
+    FUND = "펀드"                  # 펀드
+    ETF = "ETF"                   # ETF
+    
+    @classmethod
+    def normalize(cls, value: str) -> "ProductType":
+        """문자열을 표준 ProductType으로 변환"""
+        if not value:
+            return cls.DEPOSIT
+            
+        value_lower = value.lower()
+        
+        # 직접 매칭
+        for member in cls:
+            if member.value == value or member.value.lower() == value_lower:
+                return member
+        
+        # 키워드 기반 매칭
+        if '예금' in value_lower:
+            return cls.DEPOSIT
+        elif '적금' in value_lower:
+            return cls.SAVINGS
+        elif '대출' in value_lower:
+            return cls.LOAN
+        elif any(keyword in value_lower for keyword in ['투자', '펀드', 'etf']):
+            return cls.INVESTMENT
+        else:
+            # 기본값
+            return cls.DEPOSIT
 
 # 기본 정보
 class BasicInfo(BaseModel):
@@ -46,9 +80,9 @@ class InvestmentPersonality(BaseModel):
 class FinancialSituation(BaseModel):
     monthly_income: int
     monthly_expense: int
-    current_savings: int
     debt_amount: int
-    credit_score: Optional[str] = None
+    assets_amount: int
+    credit_score: int
 
 # 목표 설정
 class GoalSetting(BaseModel):
@@ -57,34 +91,27 @@ class GoalSetting(BaseModel):
     timeframe: str
     monthly_budget: int
 
-# 전체 사용자 프로필
+# 사용자 전체 프로필
 class UserProfile(BaseModel):
     basic_info: BasicInfo
     investment_personality: InvestmentPersonality
     financial_situation: FinancialSituation
     goal_setting: GoalSetting
-    
-    # 계산된 필드들
-    surplus_funds: Optional[int] = None
-    savings_rate: Optional[float] = None
-    risk_level: Optional[int] = None
 
 # 추천 요청
 class RecommendationRequest(BaseModel):
-    user_profile: Optional[UserProfile] = None
+    user_id: str
     natural_query: Optional[str] = None
+    user_profile: Optional[UserProfile] = None
     filters: Optional[Dict[str, Any]] = None
-    preferred_products: Optional[List[ProductType]] = []
-    limit: int = Field(default=5, le=20)
+    limit: int = 5
 
 # 개별 상품 추천
 class ProductRecommendation(BaseModel):
     product_id: str
     name: str
-    type: ProductType
+    type: Union[ProductType, str] # ProductType Enum 또는 문자열 허용
     bank: str
-    
-    # 상품 정보
     interest_rate: float
     max_interest_rate: Optional[float] = None
     minimum_amount: int
@@ -137,19 +164,15 @@ class UserInsights(BaseModel):
     
     # 개인화 추천
     personalized_suggestions: List[str]
-    financial_health_score: Optional[float] = None
-    
-    # 목표 달성 예측
+    financial_health_score: float
     goal_achievement_prediction: Dict[str, Any]
 
 # 피드백 데이터
 class FeedbackData(BaseModel):
     recommendation_id: str
     user_id: str
-    rating: int = Field(ge=1, le=5)
+    rating: int
     feedback_text: Optional[str] = None
     timestamp: datetime
-    
-    # 추가 메타데이터
-    interaction_type: str  # "like", "dislike", "save", "apply"
-    product_ids: List[str]
+    interaction_type: str # 'rating', 'click', 'comparison', 'signup' 등
+    product_ids: List[str] # 피드백과 관련된 상품 ID 목록
