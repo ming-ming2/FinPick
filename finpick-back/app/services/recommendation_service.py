@@ -4,13 +4,14 @@ import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import uuid
+import re # re 모듈 추가
 
 from app.models.recommendation import (
-    UserProfile, 
-    RecommendationRequest, 
+    UserProfile,
+    RecommendationRequest,
     RecommendationResponse,
     ProductRecommendation,
-    ProductType,
+    ProductType, # ProductType 임포트
     NaturalLanguageResult,
     UserInsights,
     FeedbackData
@@ -18,11 +19,9 @@ from app.models.recommendation import (
 from app.services.gemini_service import GeminiService
 
 class RecommendationService:
-    """추천 서비스 메인 클래스 (Gemini 연동)"""
-    
     def __init__(self):
         self.financial_products = self._load_financial_products()
-        # 🤖 Gemini 서비스 초기화
+
         try:
             self.gemini_service = GeminiService()
             self.use_ai = True
@@ -30,22 +29,22 @@ class RecommendationService:
         except Exception as e:
             self.gemini_service = None
             self.use_ai = False
-            print(f"⚠️ Gemini AI 연결 실패: {e}. 규칙 기반 처리로 대체됩니다.")
-    
+            print(f"⚠️ Gemini AI 연결 실패: {e}. 규칙 기반으로 처리됩니다.")
+
     def _load_financial_products(self) -> List[Dict]:
-        """금융상품 데이터 로드"""
+        """금융상품 데이터 로드 (금감원 API 데이터)"""
         try:
             file_path = os.path.join(os.path.dirname(__file__), "../../financial_products.json")
-            
+
             with open(file_path, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
-            
+
             if isinstance(raw_data, dict):
                 all_products = []
                 for category, products in raw_data.items():
                     if isinstance(products, list):
                         all_products.extend(products)
-                
+
                 print(f"✅ 금융상품 {len(all_products)}개 로드 완료")
                 return all_products
             elif isinstance(raw_data, list):
@@ -57,644 +56,415 @@ class RecommendationService:
         except Exception as e:
             print(f"❌ 금융상품 데이터 로드 실패: {e}")
             return []
-    
-    @staticmethod
-    async def analyze_user_profile(user_id: str, profile: UserProfile) -> Dict[str, Any]:
-        """사용자 프로필 분석"""
+
+    async def generate_recommendations(self, request: RecommendationRequest) -> RecommendationResponse:
         try:
-            # 1. 재정 건전성 계산
-            monthly_surplus = profile.financial_situation.monthly_income - profile.financial_situation.monthly_expense
-            savings_rate = (monthly_surplus / profile.financial_situation.monthly_income) * 100 if profile.financial_situation.monthly_income > 0 else 0
-            
-            # 2. 위험 등급 계산
-            risk_score = RecommendationService._calculate_risk_score(profile)
-            
-            # 3. 목표 달성 가능성 예측
-            achievement_probability = RecommendationService._predict_goal_achievement(profile, monthly_surplus)
-            
-            analysis = {
-                "user_id": user_id,
-                "financial_health": {
-                    "monthly_surplus": monthly_surplus,
-                    "savings_rate": round(savings_rate, 2),
-                    "debt_ratio": (profile.financial_situation.debt_amount / profile.financial_situation.monthly_income * 12) if profile.financial_situation.monthly_income > 0 else 0,
-                    "financial_stability": "안정" if monthly_surplus > 0 and savings_rate > 20 else "보통" if monthly_surplus > 0 else "주의"
-                },
-                "risk_profile": {
-                    "risk_score": risk_score,
-                    "risk_level": RecommendationService._get_risk_level_name(risk_score),
-                    "suitable_products": RecommendationService._get_suitable_products_by_risk(risk_score)
-                },
-                "goal_analysis": {
-                    "primary_goal": profile.goal_setting.primary_goal,
-                    "target_amount": profile.goal_setting.target_amount,
-                    "monthly_budget": profile.goal_setting.monthly_budget,
-                    "achievement_probability": achievement_probability,
-                    "recommended_period": RecommendationService._suggest_optimal_period(profile)
-                },
-                "personalization": {
-                    "age_group": profile.basic_info.age,
-                    "occupation_category": profile.basic_info.occupation,
-                    "preferred_channels": ["온라인", "모바일"] if profile.basic_info.age in ["20대", "30대"] else ["영업점", "온라인"]
-                }
-            }
-            
-            return analysis
-            
-        except Exception as e:
-            raise Exception(f"프로필 분석 실패: {str(e)}")
-    
-    @staticmethod
-    def _calculate_risk_score(profile: UserProfile) -> int:
-        """위험 점수 계산 (1-5점)"""
-        score = 3  # 기본 점수
-        
-        # 나이별 조정
-        if profile.basic_info.age == "20대":
-            score += 1
-        elif profile.basic_info.age == "50대 이상":
-            score -= 1
-        
-        # 투자 성향별 조정
-        if profile.investment_personality.risk_tolerance == "안전 추구형":
-            score -= 2
-        elif profile.investment_personality.risk_tolerance == "수익 추구형":
-            score += 2
-        
-        # 투자 경험별 조정
-        if profile.investment_personality.investment_experience == "풍부함":
-            score += 1
-        elif profile.investment_personality.investment_experience == "없음":
-            score -= 1
-        
-        return max(1, min(5, score))
-    
-    @staticmethod
-    def _get_risk_level_name(risk_score: int) -> str:
-        """위험 점수를 레벨명으로 변환"""
-        levels = {1: "매우 안전", 2: "안전", 3: "보통", 4: "적극적", 5: "매우 적극적"}
-        return levels.get(risk_score, "보통")
-    
-    @staticmethod
-    def _get_suitable_products_by_risk(risk_score: int) -> List[str]:
-        """위험 점수별 적합 상품 유형"""
-        if risk_score <= 2:
-            return ["정기예금", "적금"]
-        elif risk_score == 3:
-            return ["정기예금", "적금", "안전한 펀드"]
-        else:
-            return ["적금", "펀드", "투자상품"]
-    
-    @staticmethod
-    def _predict_goal_achievement(profile: UserProfile, monthly_surplus: int) -> float:
-        """목표 달성 가능성 예측"""
-        target = profile.goal_setting.target_amount
-        period_months = int(profile.goal_setting.timeframe.replace("년", "")) * 12
-        
-        if monthly_surplus <= 0:
-            return 0.0
-        
-        # 단순 계산 (이자 미고려)
-        total_savings = monthly_surplus * period_months
-        achievement_rate = min(100, (total_savings / target) * 100)
-        
-        return round(achievement_rate, 1)
-    
-    @staticmethod
-    def _suggest_optimal_period(profile: UserProfile) -> str:
-        """최적 투자 기간 제안"""
-        goal = profile.goal_setting.primary_goal
-        age = profile.basic_info.age
-        
-        if goal == "비상금 마련":
-            return "1-2년"
-        elif goal == "안전한 저축":
-            return "1-3년"
-        elif goal == "목돈 마련":
-            return "3-5년"
-        elif goal == "내집 마련":
-            return "5-10년" if age in ["20대", "30대"] else "3-7년"
-        else:
-            return "3-5년"
-    
-    # 🤖 Gemini 연동 자연어 처리 (기존 함수 대체)
-    @staticmethod
-    async def process_natural_language(user_id: str, query: str) -> NaturalLanguageResult:
-        """Gemini AI 기반 자연어 처리"""
-        try:
-            # Gemini 서비스 인스턴스 생성
-            service = RecommendationService()
-            
-            if service.use_ai and service.gemini_service:
-                # 🤖 Gemini AI 분석 사용
-                print(f"🤖 Gemini AI로 자연어 분석: {query}")
-                ai_result = await service.gemini_service.analyze_natural_language(query)
-                
-                if ai_result["success"]:
-                    extracted_conditions = ai_result["extracted_conditions"]
-                    
-                    # 상품 유형 매핑
-                    suggested_products = []
-                    for product_type in extracted_conditions.get("product_types", []):
-                        if product_type == "정기예금":
-                            suggested_products.append(ProductType.DEPOSIT)
-                        elif product_type == "적금":
-                            suggested_products.append(ProductType.SAVINGS)
-                        elif "대출" in product_type:
-                            suggested_products.append(ProductType.LOAN)
-                        else:
-                            suggested_products.append(ProductType.INVESTMENT)
-                    
-                    return NaturalLanguageResult(
-                        original_query=query,
-                        extracted_conditions=extracted_conditions,
-                        confidence_score=ai_result["confidence_score"],
-                        suggested_products=suggested_products
+            print(f"🎯 사용자 {request.user_id}의 추천 요청 처리 시작...")
+            print(f"📝 자연어 입력: {request.natural_query}")
+
+            user_profile_dict = self._prepare_user_profile(request.user_profile) if request.user_profile else None
+
+            if self.use_ai and self.gemini_service:
+                print("🚀 Gemini AI로 처리 중...")
+
+                ai_result = await self.gemini_service.recommend_products(
+                    user_query=request.natural_query,
+                    user_profile=user_profile_dict,
+                    available_products=self.financial_products,
+                    limit=request.limit
+                )
+
+                if ai_result.get("success"):
+                    recommendations = self._convert_ai_recommendations(ai_result["ai_recommendations"])
+
+                    response = RecommendationResponse(
+                        request_id=str(uuid.uuid4()),
+                        user_id=request.user_id,
+                        recommendations=recommendations,
+                        total_count=len(recommendations),
+                        filters_applied=request.filters,
+                        processing_time=0.0,
+                        timestamp=datetime.now(timezone.utc),
+                        success=True,
+                        ai_insights={
+                            "method": "Gemini AI 종합 분석",
+                            "confidence": ai_result.get("confidence_score", 0.8),
+                            "user_analysis": ai_result.get("user_analysis", {}),
+                            "overall_analysis": ai_result.get("overall_analysis", ""),
+                            "investment_advice": ai_result.get("investment_advice", ""),
+                            "products_analyzed": len(self.financial_products)
+                        }
                     )
-            
-            # 🔄 폴백: 기존 규칙 기반 처리
-            print(f"🔄 규칙 기반 자연어 분석: {query}")
-            return service._rule_based_nlp_fallback(query)
-            
-        except Exception as e:
-            print(f"❌ 자연어 처리 실패: {e}")
-            # 에러 시에도 규칙 기반으로 폴백
-            service = RecommendationService()
-            return service._rule_based_nlp_fallback(query)
-    
-    def _rule_based_nlp_fallback(self, query: str) -> NaturalLanguageResult:
-        """기존 규칙 기반 자연어 처리 (폴백)"""
-        extracted_conditions = {}
-        suggested_products = []
-        
-        query_lower = query.lower()
-        
-        if "안전" in query_lower or "예금" in query_lower:
-            suggested_products.append(ProductType.DEPOSIT)
-            extracted_conditions["risk_level"] = "low"
-        
-        if "적금" in query_lower:
-            suggested_products.append(ProductType.SAVINGS)
-        
-        if "대출" in query_lower:
-            suggested_products.append(ProductType.LOAN)
-        
-        if any(word in query_lower for word in ["투자", "수익", "펀드"]):
-            suggested_products.append(ProductType.INVESTMENT)
-        
-        # 금액 추출
-        import re
-        amount_match = re.search(r'(\d+)만원?', query)
-        if amount_match:
-            extracted_conditions["target_amount"] = int(amount_match.group(1)) * 10000
-        
-        return NaturalLanguageResult(
-            original_query=query,
-            extracted_conditions=extracted_conditions,
-            confidence_score=0.7,
-            suggested_products=suggested_products or [ProductType.SAVINGS]
-        )
-        # 🤖 AI 강화 추천 생성
-    async def generate_recommendations(self, user_id: str, request: RecommendationRequest) -> RecommendationResponse:
-        """AI 강화 맞춤 상품 추천 생성"""
-        try:
-            print(f"🎯 사용자 {user_id}의 추천 요청 처리 시작...")
-            
-            # 1. 자연어 쿼리가 있으면 먼저 분석
-            if request.natural_query:
-                nlp_result = await self.process_natural_language(user_id, request.natural_query)
-                
-                # NLP 결과를 필터에 병합
-                if not request.filters:
-                    request.filters = {}
-                request.filters.update(nlp_result.extracted_conditions)
-                
-                print(f"🔍 자연어 분석 결과: {nlp_result.extracted_conditions}")
-            
-            # 2. 사용자 프로필 기반 필터링
-            if request.user_profile:
-                profile_analysis = await self.analyze_user_profile(user_id, request.user_profile)
-                suitable_products = self._filter_products_by_profile(request.user_profile, profile_analysis)
+
+                    print(f"✅ AI 추천 완료: {len(recommendations)}개 상품")
+                    return response
+                else:
+                    print("⚠️ AI 추천 실패, 규칙 기반으로 폴백")
+                    return await self._fallback_recommendations(request)
             else:
-                suitable_products = self.financial_products[:50]  # 상위 50개만
-            
-            print(f"📊 프로필 필터링 후: {len(suitable_products)}개 상품")
-            
-            # 3. 추가 필터 적용
-            if request.filters:
-                suitable_products = self._apply_filters(suitable_products, request.filters)
-                print(f"🔎 추가 필터 후: {len(suitable_products)}개 상품")
-            
-            # 4. AI 강화 점수 계산
-            scored_products = await self._ai_enhanced_scoring(suitable_products, request)
-            
-            # 5. 상위 N개 선택
-            top_products = sorted(scored_products, key=lambda x: x['match_score'], reverse=True)[:request.limit]
-            
-            # 6. AI 추천 이유 생성
-            recommendations = []
-            for product_data in top_products:
-                recommendation = await self._create_ai_recommendation(product_data, request.user_profile)
-                recommendations.append(recommendation)
-            
-            # 7. 응답 생성
-            recommendation_id = str(uuid.uuid4())
-            
-            # 🤖 AI 분석 요약 생성
-            ai_analysis = None
-            if self.use_ai and request.user_profile:
-                ai_analysis = await self._generate_ai_analysis_summary(request.user_profile, recommendations)
-            
-            response = RecommendationResponse(
-                user_id=user_id,
-                recommendation_id=recommendation_id,
-                created_at=datetime.now(timezone.utc),
-                products=recommendations,
-                summary={
-                    "total_products_analyzed": len(self.financial_products),
-                    "suitable_products_found": len(suitable_products),
-                    "top_recommendations": len(recommendations),
-                    "average_match_score": sum(p.match_score for p in recommendations) / len(recommendations) if recommendations else 0,
-                    "ai_enhanced": self.use_ai
-                },
-                total_count=len(recommendations),
-                ai_analysis=ai_analysis,
-                suggested_actions=[
-                    {"type": "compare", "title": "상품 비교하기", "description": "추천 상품들을 자세히 비교해보세요"},
-                    {"type": "simulate", "title": "목표 시뮬레이션", "description": "선택한 상품으로 목표 달성 가능성을 확인해보세요"},
-                    {"type": "feedback", "title": "추천 평가", "description": "AI 추천 결과에 대한 피드백을 남겨주세요"}
-                ]
-            )
-            
-            print(f"✅ 추천 생성 완료: {len(recommendations)}개 상품, 평균 점수 {response.summary['average_match_score']:.1f}")
-            return response
-            
+                print("📊 규칙 기반 추천으로 처리")
+                return await self._fallback_recommendations(request)
+
         except Exception as e:
             print(f"❌ 추천 생성 실패: {e}")
-            raise Exception(f"추천 생성 실패: {str(e)}")
-    
-    def _filter_products_by_profile(self, profile: UserProfile, analysis: Dict) -> List[Dict]:
-        """프로필 기반 상품 필터링"""
-        suitable_products = []
-        
-        for product in self.financial_products:
-            # 최소 가입 금액 조건
-            if product.get('details', {}).get('minimum_amount', 0) > profile.goal_setting.monthly_budget:
-                continue
-            
-            # 위험 수준에 따른 상품 타입 필터링
-            risk_level = analysis.get('risk_profile', {}).get('risk_score', 3)
-            product_type = product.get('type', '')
-            
-            if risk_level <= 2 and product_type not in ['정기예금', '적금']:
-                continue
-            
-            suitable_products.append(product)
-        
-        return suitable_products
-    
-    def _apply_filters(self, products: List[Dict], filters: Dict) -> List[Dict]:
-        """추가 필터 적용"""
-        filtered = products
-        
-        if 'product_type' in filters:
-            filtered = [p for p in filtered if p.get('type') == filters['product_type']]
-        
-        if 'min_interest_rate' in filters:
-            filtered = [p for p in filtered if p.get('details', {}).get('interest_rate', 0) >= filters['min_interest_rate']]
-        
-        if 'max_minimum_amount' in filters:
-            filtered = [p for p in filtered if p.get('details', {}).get('minimum_amount', 0) <= filters['max_minimum_amount']]
-        
-        return filtered
-    
-    async def _ai_enhanced_scoring(self, products: List[Dict], request: RecommendationRequest) -> List[Dict]:
-        """AI 강화 매칭 점수 계산"""
-        scored_products = []
-        
-        for product in products:
-            base_score = 70  # 기본 점수
-            
-            # 기존 점수 계산 로직
-            if request.user_profile:
-                target = request.user_profile.goal_setting.target_amount
-                min_amount = product.get('details', {}).get('minimum_amount', 0)
-                if min_amount <= target * 0.1:
-                    base_score += 10
-                
-                interest_rate = product.get('details', {}).get('interest_rate', 0)
-                if interest_rate >= 3.5:
-                    base_score += 15
-                elif interest_rate >= 3.0:
-                    base_score += 10
-                elif interest_rate >= 2.5:
-                    base_score += 5
-                
-                # 은행 신뢰도
-                bank_name = product.get('provider', {}).get('name', '')
-                if any(major in bank_name for major in ['KB', '신한', '우리', '하나', 'NH']):
-                    base_score += 5
-            
-            # 🤖 AI 보너스 점수 (자연어 매칭)
-            if request.natural_query and self.use_ai:
-                ai_bonus = await self._calculate_ai_relevance_score(product, request.natural_query)
-                base_score += ai_bonus
-                print(f"🤖 AI 보너스: {product.get('name', '')} +{ai_bonus}점")
-            
-            product_with_score = product.copy()
-            product_with_score['match_score'] = min(100, base_score)
-            scored_products.append(product_with_score)
-        
-        return scored_products
-    
-    async def _calculate_ai_relevance_score(self, product: Dict, query: str) -> int:
-        """AI 기반 상품-쿼리 관련성 점수 계산"""
-        try:
-            if not self.gemini_service:
-                return 0
-            
-            # 상품 정보와 쿼리의 관련성을 0-10점으로 평가
-            product_info = f"{product.get('name', '')} {product.get('type', '')} {product.get('details', {}).get('interest_rate', 0)}%"
-            
-            # 간단한 키워드 매칭으로 임시 구현
-            query_lower = query.lower()
-            product_lower = product_info.lower()
-            
-            bonus = 0
-            if "안전" in query_lower and ("예금" in product_lower or "적금" in product_lower):
-                bonus += 8
-            elif "투자" in query_lower and "투자" in product_lower:
-                bonus += 8
-            elif "대출" in query_lower and "대출" in product_lower:
-                bonus += 8
-            elif any(word in query_lower for word in ["높은", "좋은"]) and product.get('details', {}).get('interest_rate', 0) >= 3.5:
-                bonus += 5
-            
-            return bonus
-            
-        except Exception as e:
-            print(f"❌ AI 관련성 점수 계산 실패: {e}")
-            return 0
-    
-    async def _create_ai_recommendation(self, product_data: Dict, profile: Optional[UserProfile]) -> ProductRecommendation:
-        """AI 강화 ProductRecommendation 객체 생성 - 🔥 타입 매핑 수정"""
-        details = product_data.get('details', {})
-        provider = product_data.get('provider', {})
-        conditions = product_data.get('conditions', {})
-        
-        # 🔥 상품 타입 매핑 함수 추가
-        def map_product_type(original_type: str) -> str:
-            """원본 타입을 Enum에 맞게 매핑"""
-            type_mapping = {
-                '예금': '정기예금',
-                '정기예금': '정기예금',
-                '적금': '적금',
-                '대출': '대출',
-                '신용대출': '대출',
-                '주택담보대출': '대출',
-                '마이너스대출': '대출',
-                '투자': '투자상품',
-                '투자상품': '투자상품',
-                '펀드': '투자상품',
-                'ETF': '투자상품',
-            }
-            
-            # 정확히 매칭되는 것이 있으면 사용
-            if original_type in type_mapping:
-                return type_mapping[original_type]
-            
-            # 부분 매칭 시도
-            original_lower = original_type.lower()
-            if '예금' in original_lower:
-                return '정기예금'
-            elif '적금' in original_lower:
-                return '적금'
-            elif '대출' in original_lower:
-                return '대출'
-            elif '투자' in original_lower or '펀드' in original_lower:
-                return '투자상품'
-            else:
-                # 기본값
-                return '정기예금'
-        
-        # 🔥 타입 안전하게 매핑
-        original_type = product_data.get('type', '정기예금')
-        mapped_type = map_product_type(original_type)
-        
-        print(f"🔧 타입 매핑: '{original_type}' → '{mapped_type}'")
-        
-        # 🤖 AI 추천 이유 생성
-        if self.use_ai and self.gemini_service and profile:
-            try:
-                user_profile_dict = {
-                    "age": profile.basic_info.age,
-                    "goal": profile.goal_setting.primary_goal,
-                    "risk_tolerance": profile.investment_personality.risk_tolerance
-                }
-                ai_reason = await self.gemini_service.enhance_recommendation_reason(
-                    user_profile_dict, product_data, product_data.get('match_score', 0)
-                )
-                recommendation_reason = ai_reason
-            except Exception as e:
-                print(f"❌ AI 추천 이유 생성 실패: {e}")
-                recommendation_reason = self._generate_recommendation_reason(product_data, profile)
-        else:
-            recommendation_reason = self._generate_recommendation_reason(product_data, profile)
-        
-        pros, cons = self._generate_pros_cons(product_data, profile)
-        
-        # 🔥 안전한 데이터 추출
-        product_name = product_data.get('name', '상품명 없음')
-        bank_name = provider.get('name', '은행명 없음')
-        interest_rate = float(details.get('interest_rate', 0))
-        minimum_amount = int(details.get('minimum_amount', 100000))
-        match_score = float(product_data.get('match_score', 75))
-        
-        try:
-            return ProductRecommendation(
-                product_id=product_data.get('id', f'prod_{hash(product_name)}'),
-                name=product_name,
-                type=mapped_type,  # 🔥 매핑된 타입 사용
-                bank=bank_name,
-                interest_rate=interest_rate,
-                max_interest_rate=details.get('max_interest_rate'),
-                minimum_amount=minimum_amount,
-                maximum_amount=details.get('maximum_amount'),
-                available_periods=details.get('available_periods', [12, 24, 36]),
-                match_score=match_score,
-                recommendation_reason=recommendation_reason,
-                pros=pros,
-                cons=cons,
-                join_conditions={
-                    "join_way": conditions.get('join_way', []) if isinstance(conditions.get('join_way'), list) else [],
-                    "join_member": str(conditions.get('join_member', '')),
-                    "special_conditions": str(conditions.get('special_conditions', ''))
-                },
-                special_benefits=[]
-            )
-        except Exception as e:
-            print(f"❌ ProductRecommendation 생성 실패: {e}")
-            print(f"    상품 데이터: {product_data}")
-            
-            # 🔥 안전한 폴백 객체 생성
-            return ProductRecommendation(
-                product_id=f'fallback_{hash(str(product_data))}',
-                name=product_name,
-                type='정기예금',  # 안전한 기본값
-                bank=bank_name,
-                interest_rate=interest_rate,
-                minimum_amount=minimum_amount,
-                available_periods=[12],
-                match_score=50,  # 기본 점수
-                recommendation_reason="상품 정보 처리 중 오류가 발생했습니다.",
-                pros=["안전한 금융상품"],
-                cons=["상세 정보 확인 필요"],
-                join_conditions={
-                    "join_way": [],
-                    "join_member": "",
-                    "special_conditions": ""
-                },
-                special_benefits=[]
-            )
-    
-    def _generate_recommendation_reason(self, product: Dict, profile: Optional[UserProfile]) -> str:
-        """추천 이유 생성"""
-        reasons = []
-        
-        interest_rate = product.get('details', {}).get('interest_rate', 0)
-        if interest_rate >= 3.5:
-            reasons.append(f"높은 금리 {interest_rate}%")
-        
-        min_amount = product.get('details', {}).get('minimum_amount', 0)
-        if profile and min_amount <= profile.goal_setting.monthly_budget:
-            reasons.append("가입 조건이 적합함")
-        
-        if not reasons:
-            reasons.append("안정적인 상품")
-        
-        return ", ".join(reasons)
-    
-    def _generate_pros_cons(self, product: Dict, profile: Optional[UserProfile]) -> tuple:
-        """장단점 생성"""
-        pros = []
-        cons = []
-        
-        interest_rate = product.get('details', {}).get('interest_rate', 0)
-        if interest_rate >= 3.5:
-            pros.append("시중 평균보다 높은 금리")
-        elif interest_rate < 2.5:
-            cons.append("상대적으로 낮은 금리")
-        
-        join_ways = product.get('conditions', {}).get('join_way', [])
-        if '인터넷' in join_ways or '스마트폰' in join_ways:
-            pros.append("온라인 가입 가능")
-        
-        if not pros:
-            pros.append("안정적인 금융기관")
-        if not cons:
-            cons.append("중도해지 시 금리 손실")
-        
-        return pros, cons
-    
-    async def _generate_ai_analysis_summary(self, user_profile: UserProfile, recommendations: List[ProductRecommendation]) -> Dict[str, Any]:
-        """AI 분석 요약 생성"""
-        try:
-            if not self.use_ai or not self.gemini_service:
-                return None
-            
-            user_profile_dict = {
-                "age": user_profile.basic_info.age,
-                "goal": user_profile.goal_setting.primary_goal,
-                "risk_tolerance": user_profile.investment_personality.risk_tolerance,
-                "target_amount": user_profile.goal_setting.target_amount
-            }
-            
-            # 🤖 AI 금융 조언 생성
-            advice = await self.gemini_service.generate_financial_advice(
-                user_profile_dict, 
-                [{"name": r.name, "type": r.type, "rate": r.interest_rate} for r in recommendations]
-            )
-            
-            return {
-                "ai_advice": advice,
-                "analysis_method": "Gemini AI 분석",
-                "confidence_level": "높음" if len(recommendations) >= 3 else "보통",
-                "personalization_score": 85 + len(recommendations) * 2  # 상품 수에 따라 점수 증가
-            }
-            
-        except Exception as e:
-            print(f"❌ AI 분석 요약 생성 실패: {e}")
-            return {
-                "ai_advice": "다양한 옵션을 검토하시고 신중하게 선택하세요!",
-                "analysis_method": "규칙 기반 분석",
-                "confidence_level": "보통",
-                "personalization_score": 70
-            }
-    
-    @staticmethod
-    async def get_user_recommendation_history(user_id: str, limit: int = 10) -> List[Dict]:
-        """사용자 추천 이력 조회"""
-        # TODO: Firebase Firestore 연동 예정
-        return [
-            {
-                "recommendation_id": "rec_001",
-                "created_at": "2024-07-11T10:30:00Z",
-                "products_count": 3,
-                "primary_goal": "안전한 저축",
-                "status": "viewed"
-            }
-        ]
-    
-    @staticmethod
-    async def record_feedback(user_id: str, recommendation_id: str, rating: int, feedback: Optional[str] = None) -> Dict:
-        """피드백 기록"""
-        try:
-            feedback_data = FeedbackData(
-                recommendation_id=recommendation_id,
-                user_id=user_id,
-                rating=rating,
-                feedback_text=feedback,
+            return RecommendationResponse(
+                request_id=str(uuid.uuid4()),
+                user_id=request.user_id,
+                recommendations=[],
+                total_count=0,
+                filters_applied=request.filters,
+                processing_time=0.0,
                 timestamp=datetime.now(timezone.utc),
-                interaction_type="rating",
-                product_ids=[]
+                success=False,
+                error=str(e)
             )
-            
-            print(f"✅ 피드백 기록: {user_id} -> {recommendation_id} (평점: {rating})")
-            
-            return {
-                "success": True,
-                "feedback_id": str(uuid.uuid4()),
-                "message": "피드백이 성공적으로 기록되었습니다."
-            }
-            
-        except Exception as e:
-            raise Exception(f"피드백 기록 실패: {str(e)}")
-    
-    @staticmethod
-    async def get_user_insights(user_id: str) -> UserInsights:
-        """사용자 개인화 인사이트"""
-        return UserInsights(
-            user_id=user_id,
-            search_patterns={
-                "most_searched_type": "적금",
-                "preferred_banks": ["KB국민은행", "신한은행"],
-                "average_session_time": "5분 30초"
-            },
-            preference_trends={
-                "risk_tolerance_trend": "안전 지향",
-                "amount_preference": "소액 투자 선호",
-                "period_preference": "단기 투자 선호"
-            },
-            personalized_suggestions=[
-                "현재 시장 금리가 상승 중이니 장기 상품을 고려해보세요",
-                "적금보다 정기예금이 현재 수익률이 더 좋습니다",
-                "신용등급 향상을 위한 금융 거래 늘리기를 추천합니다"
-            ],
-            financial_health_score=78.5,
-            goal_achievement_prediction={
-                "current_progress": "25%",
-                "estimated_completion": "2026-12-31",
-                "required_monthly_saving": 45000,
-                "success_probability": "높음"
+
+    def _prepare_user_profile(self, profile: UserProfile) -> Dict[str, Any]:
+        """사용자 프로필을 AI가 이해할 수 있는 형태로 변환"""
+        return {
+            "age": profile.basic_info.age,
+            "occupation": profile.basic_info.occupation,
+            "region": profile.basic_info.residence, # residence로 변경
+            "monthly_income": profile.financial_situation.monthly_income,
+            "monthly_expense": profile.financial_situation.monthly_expense,
+            "investment_experience": profile.investment_personality.investment_experience,
+            "risk_tolerance": profile.investment_personality.risk_tolerance,
+            "primary_goal": profile.goal_setting.primary_goal,
+            "target_amount": profile.goal_setting.target_amount,
+            "target_period": profile.goal_setting.timeframe, # timeframe으로 변경
+            "monthly_budget": profile.goal_setting.monthly_budget
+        }
+
+    def _convert_ai_recommendations(self, ai_recommendations: List[Dict]) -> List[ProductRecommendation]:
+        """AI 추천 결과를 ProductRecommendation 모델로 변환"""
+        converted = []
+
+        for idx, ai_rec in enumerate(ai_recommendations):
+            original_product = ai_rec.get("original_product", {})
+
+            # 상품 타입 매핑 (ProductType.normalize 사용)
+            product_type = ProductType.normalize(original_product.get("type", ""))
+
+            recommendation = ProductRecommendation(
+                product_id=original_product.get('id', str(uuid.uuid4())), # 'id' 대신 'product_id' 사용
+                name=ai_rec.get("product_name", ""),
+                provider=original_product.get("provider", {}).get("name", ""),
+                type=product_type, # 정규화된 ProductType 사용
+
+                # 🔥 AI가 직접 계산한 점수 사용
+                match_score=float(ai_rec.get("ai_score", 0)),
+
+                interest_rate=original_product.get("details", {}).get("interest_rate", 0),
+                minimum_amount=original_product.get("details", {}).get("minimum_amount", 0),
+                maximum_amount=original_product.get("details", {}).get("maximum_amount", None),
+                available_periods=original_product.get("details", {}).get("available_periods", []), # 예시 필드
+
+                # 🔥 AI가 생성한 추천 이유
+                recommendation_reason=ai_rec.get("match_reason", "AI 추천"),
+
+                # 🔥 AI가 분석한 장단점
+                pros=ai_rec.get("pros", ["AI 분석 완료"]),
+                cons=ai_rec.get("cons", ["상세 조건 확인 필요"]),
+
+                join_conditions={
+                    "join_way": original_product.get("conditions", {}).get("join_way", []),
+                    "join_member": original_product.get("conditions", {}).get("join_member", ""),
+                    "special_conditions": original_product.get("conditions", {}).get("special_conditions", "")
+                },
+
+                special_benefits=original_product.get("benefits", []),
+
+                # AI 특화 필드들
+                ai_analysis={
+                    "risk_assessment": ai_rec.get("risk_assessment", "보통"),
+                    "expected_return": ai_rec.get("expected_return", ""),
+                    "priority": ai_rec.get("recommendation_priority", idx + 1),
+                    "ai_confidence": ai_rec.get("ai_score", 0) / 100,
+                    "analysis_method": "Gemini AI 개별 분석"
+                }
+            )
+            converted.append(recommendation)
+
+        return converted
+
+    def _map_product_type(self, type_str: str) -> ProductType:
+        """상품 타입 문자열을 ProductType enum으로 매핑"""
+        # 이 함수는 ProductType.normalize로 대체될 수 있습니다.
+        # 여기서는 기존 코드와의 호환성을 위해 유지합니다.
+        type_mapping = {
+            "정기예금": ProductType.DEPOSIT,
+            "예금": ProductType.DEPOSIT,
+            "적금": ProductType.SAVINGS,
+            "신용대출": ProductType.CREDIT_LOAN,
+            "대출": ProductType.CREDIT_LOAN,
+            "주택담보대출": ProductType.MORTGAGE_LOAN,
+            "투자상품": ProductType.INVESTMENT,
+            "펀드": ProductType.FUND,
+            "ETF": ProductType.ETF,
+        }
+
+        for key, product_type in type_mapping.items():
+            if key in type_str:
+                return product_type
+
+        return ProductType.DEPOSIT  # 기본값
+
+    async def _fallback_recommendations(self, request: RecommendationRequest) -> RecommendationResponse:
+        """AI 실패 시 규칙 기반 폴백 추천"""
+        print("📊 규칙 기반 폴백 추천 실행")
+
+        # 간단한 규칙 기반 추천 로직
+        # request.filters를 사용하여 필터링 로직 개선
+        filtered_products = self._apply_basic_filters(request.filters)
+        scored_products = []
+
+        for product in filtered_products[:request.limit * 2]:
+            score = self._calculate_basic_score(product, request.user_profile)
+
+            if score > 50:  # 최소 점수 이상만
+                recommendation = self._create_basic_recommendation(product, score)
+                scored_products.append(recommendation)
+
+        # 점수순 정렬 후 제한
+        scored_products.sort(key=lambda x: x.match_score, reverse=True)
+        final_recommendations = scored_products[:request.limit]
+
+        return RecommendationResponse(
+            request_id=str(uuid.uuid4()),
+            user_id=request.user_id,
+            recommendations=final_recommendations,
+            total_count=len(final_recommendations),
+            filters_applied=request.filters,
+            processing_time=0.1,
+            timestamp=datetime.now(timezone.utc),
+            success=True,
+            ai_insights={
+                "method": "규칙 기반 분석 (AI 폴백)",
+                "confidence": 0.6,
+                "note": "AI 엔진 연결 실패로 규칙 기반 처리"
             }
         )
+
+    def _apply_basic_filters(self, filters: Dict) -> List[Dict]:
+        """기본 필터 적용"""
+        filtered = self.financial_products
+
+        # 투자 목적 필터
+        if filters.get('investment_purpose'):
+            # "투자_수익" 또는 "안전한_저축"에 따라 필터링
+            purpose = filters['investment_purpose']
+            if purpose == "투자_수익":
+                filtered = [p for p in filtered if ProductType.normalize(p.get('type', '')) in [ProductType.INVESTMENT, ProductType.FUND, ProductType.ETF]]
+            elif purpose == "안전한_저축":
+                filtered = [p for p in filtered if ProductType.normalize(p.get('type', '')) in [ProductType.DEPOSIT, ProductType.SAVINGS]]
+
+
+        # 금액 필터
+        amount_filter = filters.get('amount', {})
+        if amount_filter.get('minimum_amount') is not None:
+            min_amount = amount_filter['minimum_amount']
+            # 대출 상품의 경우, minimum_amount가 대출 한도를 의미할 수 있으므로,
+            # 사용자가 원하는 금액보다 대출 상품의 최소 금액이 작거나 같은 경우를 고려
+            filtered = [p for p in filtered
+                       if p.get('details', {}).get('minimum_amount', 0) <= min_amount or ProductType.normalize(p.get('type', '')) in [ProductType.LOAN, ProductType.CREDIT_LOAN, ProductType.MORTGAGE_LOAN]]
+
+        # 상품 타입 필터
+        if filters.get('product_types'):
+            product_types_str = filters['product_types'] # 문자열 리스트
+            product_types_enum = [ProductType.normalize(pt) for pt in product_types_str] # Enum으로 변환
+
+            filtered = [p for p in filtered
+                       if ProductType.normalize(p.get('type', '')) in product_types_enum]
+
+        return filtered
+
+    def _calculate_basic_score(self, product: Dict, profile: Optional[UserProfile]) -> float:
+        """기본 점수 계산"""
+        score = 50.0  # 기본 점수
+
+        # 금리 점수
+        rate = product.get('details', {}).get('interest_rate', 0)
+        if rate >= 4.0:
+            score += 30
+        elif rate >= 3.0:
+            score += 20
+        elif rate >= 2.0:
+            score += 10
+
+        # 프로필 매칭 점수
+        if profile:
+            # 위험 성향 매칭
+            risk_tolerance = profile.investment_personality.risk_tolerance
+            product_type = ProductType.normalize(product.get('type', '')) # 정규화된 ProductType 사용
+
+            if risk_tolerance == "안전추구형":
+                if product_type in [ProductType.DEPOSIT, ProductType.SAVINGS]:
+                    score += 20
+            elif risk_tolerance == "수익추구형":
+                if product_type in [ProductType.INVESTMENT, ProductType.FUND, ProductType.ETF]:
+                    score += 20
+
+            # 목표 금액 매칭
+            target_amount = profile.goal_setting.target_amount
+            min_amount = product.get('details', {}).get('minimum_amount', 0)
+            max_amount = product.get('details', {}).get('maximum_amount', float('inf'))
+
+            if min_amount <= target_amount <= max_amount:
+                score += 15
+
+        return min(100.0, score)
+
+    def _create_basic_recommendation(self, product: Dict, score: float) -> ProductRecommendation:
+        """기본 추천 객체 생성"""
+        product_type = ProductType.normalize(product.get("type", "")) # 정규화된 ProductType 사용
+
+        return ProductRecommendation(
+            product_id=product.get('id', str(uuid.uuid4())), # 'id' 대신 'product_id' 사용
+            name=product.get('name', ''),
+            provider=product.get('provider', {}).get('name', ''),
+            type=product_type,
+            match_score=score,
+            interest_rate=product.get('details', {}).get('interest_rate', 0),
+            minimum_amount=product.get('details', {}).get('minimum_amount', 0),
+            maximum_amount=product.get('details', {}).get('maximum_amount', None),
+            available_periods=product.get('details', {}).get('available_periods', []),
+            recommendation_reason=f"규칙 기반 매칭 (점수: {score:.1f})",
+            pros=["기본 조건 만족", "안정적인 금융기관"],
+            cons=["AI 분석 미적용", "개인화 부족"],
+            join_conditions={
+                "join_way": product.get('conditions', {}).get('join_way', []),
+                "join_member": product.get('conditions', {}).get('join_member', ''),
+                "special_conditions": product.get('conditions', {}).get('special_conditions', '')
+            },
+            special_benefits=product.get('benefits', [])
+        )
+
+
+    @staticmethod
+    async def process_natural_language(user_id: str, query: str) -> NaturalLanguageResult:
+        """AI 엔진 기반 자연어 처리 - 완전히 안전한 버전"""
+        try:
+            service = RecommendationService()
+
+            if service.use_ai and service.gemini_service:
+                print(f"🤖 Gemini AI로 자연어 분석: {query}")
+
+                try:
+                    ai_analysis = await service.gemini_service._analyze_user_requirements(query, None)
+                    print(f"📊 AI 분석 원본 결과: {ai_analysis}")
+
+                    # 안전한 변환 함수들
+                    def safe_int_convert(value, default=5):
+                        if value is None:
+                            return default
+                        if isinstance(value, (int, float)):
+                            return int(value)
+                        if isinstance(value, str):
+                            numbers = re.findall(r'\d+', value)
+                            if numbers:
+                                return int(numbers[0])
+                        return default
+
+                    def safe_float_convert(value, default=0.8):
+                        if value is None:
+                            return default
+                        if isinstance(value, (int, float)):
+                            return float(value)
+                        if isinstance(value, str):
+                            numbers = re.findall(r'\d+\.?\d*', value)
+                            if numbers:
+                                return float(numbers[0])
+                        return default
+
+                    # 먼저 모든 값을 안전하게 변환
+                    risk_appetite_val = safe_int_convert(ai_analysis.get("risk_appetite"), 5)
+                    target_amount_val = safe_int_convert(ai_analysis.get("target_amount"), 0)
+                    urgency_level_val = safe_int_convert(ai_analysis.get("urgency_level"), 5)
+                    confidence_val = safe_float_convert(ai_analysis.get("analysis_confidence"), 0.8)
+                    monthly_budget_val = None
+                    if ai_analysis.get("monthly_budget"):
+                        monthly_budget_val = safe_int_convert(ai_analysis.get("monthly_budget"), None)
+
+                    print(f"✅ 안전 변환 완료: risk={risk_appetite_val}, target={target_amount_val}, confidence={confidence_val}")
+
+                    # 상품 유형 결정
+                    suggested_products = []
+
+                    # 키워드 기반 상품 추천
+                    # investment_goal이 None일 경우를 대비하여 빈 문자열로 처리
+                    investment_goal_str = ai_analysis.get("investment_goal", "")
+                    if investment_goal_str is None: # 명시적으로 None인 경우 빈 문자열로
+                        investment_goal_str = ""
+
+                    if any(keyword in investment_goal_str.lower() for keyword in ["대출", "빌리", "급전", "필요", "융통", "살려"]):
+                        if ProductType.CREDIT_LOAN not in suggested_products:
+                            suggested_products.append(ProductType.CREDIT_LOAN)
+
+                    # product_preferences 확인
+                    for pref in ai_analysis.get("product_preferences", []):
+                        normalized_pref = ProductType.normalize(pref)
+                        if normalized_pref not in suggested_products: # 중복 방지
+                            suggested_products.append(normalized_pref)
+                    
+                    # AI가 아무것도 추천하지 않은 경우에만 기본값
+                    if not suggested_products:
+                        suggested_products.append(ProductType.DEPOSIT)
+
+                    # 중복 제거 (다시 한번 확인)
+                    suggested_products = list(set(suggested_products))
+
+                    # 필터 조건 생성 (이제 모든 값이 안전함)
+                    filters = {
+                        "investment_purpose": "투자_수익" if risk_appetite_val > 6 else "안전한_저축",
+                        "amount": {
+                            "minimum_amount": target_amount_val,
+                            "target_amount": target_amount_val,
+                            "monthly_amount": monthly_budget_val
+                        },
+                        "investment_period": ai_analysis.get("investment_period", "중기"),
+                        "risk_tolerance": "수익추구형" if risk_appetite_val > 6 else "안전추구형",
+                        "product_types": [p.value for p in suggested_products], # ProductType enum 값을 문자열로 변환
+                        "special_conditions": ai_analysis.get("special_requirements", []),
+                        "confidence": confidence_val,
+                        "reason": ai_analysis.get("investment_goal", "AI 분석 완료")
+                    }
+
+                    return NaturalLanguageResult(
+                        success=True,
+                        original_query=query,
+                        parsed_conditions=filters,
+                        suggested_products=suggested_products,
+                        confidence_score=confidence_val,
+                        processing_method="Gemini AI 자연어 분석",
+                        extracted_entities={
+                            "investment_goal": ai_analysis.get("investment_goal"),
+                            "risk_level": risk_appetite_val,
+                            "target_amount": target_amount_val,
+                            "urgency": urgency_level_val
+                        },
+                        timestamp=datetime.now(timezone.utc)
+                    )
+
+                except Exception as e:
+                    print(f"❌ AI 분석 처리 오류: {e}")
+                    # 오류 시 폴백 처리 (static method로 호출)
+                    return RecommendationService._fallback_natural_language(query) # service. -> RecommendationService.
+
+            else:
+                # AI 비활성화 시 폴백 처리 (static method로 호출)
+                return RecommendationService._fallback_natural_language(query) # service. -> RecommendationService.
+
+        except Exception as e:
+            print(f"❌ 자연어 처리 최종 실패: {e}")
+            # 최종 폴백 - 반드시 올바른 NaturalLanguageResult 반환
+            return NaturalLanguageResult(
+                success=False,
+                original_query=query,
+                parsed_conditions={},
+                confidence_score=0.5,
+                suggested_products=[ProductType.DEPOSIT],
+                processing_method="오류 발생 - 기본값 반환",
+                extracted_entities={},
+                timestamp=datetime.now(timezone.utc),
+                error=str(e)
+            )

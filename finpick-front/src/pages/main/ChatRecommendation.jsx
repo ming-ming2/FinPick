@@ -290,10 +290,14 @@ const FinPickPremiumMap = () => {
   const mapProductType = (backendType) => {
     const typeMap = {
       정기예금: "deposit",
+      예금: "deposit", // 예금도 deposit으로
       적금: "savings",
       신용대출: "loan",
       주택담보대출: "loan",
+      대출: "loan", // 일반 대출도 loan으로
       투자상품: "investment",
+      펀드: "investment", // 펀드도 investment로
+      ETF: "investment", // ETF도 investment로
     };
     return typeMap[backendType] || "savings"; // 기본값 'savings'
   };
@@ -315,11 +319,17 @@ const FinPickPremiumMap = () => {
       type.includes("savings")
     ) {
       return "예금/적금";
-    } else if (type.includes("대출") || type.includes("loan")) {
+    } else if (
+      type.includes("대출") ||
+      type.includes("loan") ||
+      type.includes("신용대출") ||
+      type.includes("주택담보대출")
+    ) {
       return "대출상품";
     } else if (
       type.includes("투자") ||
       type.includes("펀드") ||
+      type.includes("etf") ||
       type.includes("investment")
     ) {
       return "투자상품";
@@ -330,6 +340,7 @@ const FinPickPremiumMap = () => {
 
   // 🔧 월 납입액 추정 (핀 상세 정보용)
   const estimateMonthlyAmount = (product) => {
+    // product.minimum_amount가 0일 경우를 대비하여 100000을 기본값으로 사용
     const minAmount = product.minimum_amount || 100000;
     if (minAmount >= 10000000) return 0; // 대출은 월 납입이 없을 수 있음
     return Math.max(1, Math.floor(minAmount / 10000 / 10));
@@ -347,20 +358,11 @@ const FinPickPremiumMap = () => {
 
     return products.map((product) => {
       try {
+        // 백엔드에서 받은 product.type을 inferDomain으로 전달
+        const inferredDomainName = inferDomain(product.type);
         const hub =
-          financialHubs.find((h) =>
-            h.keywords.some((keyword) => {
-              const productName = (product.name || "").toLowerCase();
-              const productType = (product.type || "").toLowerCase();
-              const productDomain = product.domain || "";
-
-              return (
-                productName.includes(keyword.toLowerCase()) ||
-                productType.includes(keyword.toLowerCase()) ||
-                h.name === productDomain
-              );
-            })
-          ) || financialHubs[0]; // 기본값으로 첫 번째 허브 사용
+          financialHubs.find((h) => h.name === inferredDomainName) ||
+          financialHubs[0]; // 기본값으로 첫 번째 허브 사용
 
         return {
           ...product,
@@ -427,10 +429,16 @@ const FinPickPremiumMap = () => {
     const input = query.toLowerCase();
     let selectedDomainName = "예금/적금";
 
-    for (const hub of financialHubs) {
-      if (hub.keywords.some((keyword) => input.includes(keyword))) {
-        selectedDomainName = hub.name;
-        break;
+    // 대출 관련 키워드 추가
+    const loanKeywords = ["대출", "빌리", "급전", "필요", "융통", "살려"];
+    if (loanKeywords.some((keyword) => input.includes(keyword))) {
+      selectedDomainName = "대출상품";
+    } else {
+      for (const hub of financialHubs) {
+        if (hub.keywords.some((keyword) => input.includes(keyword))) {
+          selectedDomainName = hub.name;
+          break;
+        }
       }
     }
 
@@ -467,20 +475,16 @@ const FinPickPremiumMap = () => {
     return products.map((product, index) => {
       try {
         return {
-          id: product.product_id || `product_${Date.now()}_${index}`,
-          name: product.product_name || product.name || "상품명 미제공",
-          type: mapProductType(
-            product.product_type || product.type || "savings"
-          ),
+          id: product.id || `product_${Date.now()}_${index}`, // product_id 대신 id 사용
+          name: product.name || "상품명 미제공",
+          type: mapProductType(product.type || "savings"), // 백엔드 type을 mapProductType으로 변환
           rate: product.interest_rate || 0,
           minAmount: Math.floor((product.minimum_amount || 100000) / 10000),
           suitability: Math.round(product.match_score || 75),
           reason: product.recommendation_reason || "추천 이유 없음",
           monthlyAmount: estimateMonthlyAmount(product),
-          bank: product.bank_name || product.bank || "은행명 미제공",
-          domain: inferDomain(
-            product.product_type || product.type || "savings"
-          ), // 🔥 안전한 호출
+          bank: product.provider || "은행명 미제공", // bank 대신 provider 사용
+          domain: inferDomain(product.type || "savings"), // 백엔드 type을 inferDomain으로 변환
         };
       } catch (error) {
         console.error("❌ 상품 변환 오류:", error, product);
@@ -534,7 +538,8 @@ const FinPickPremiumMap = () => {
 
         if (response.success) {
           // 🔥 안전한 데이터 추출 및 변환
-          const products = response.data?.products || [];
+          // 백엔드 응답의 recommendations 필드 사용
+          const products = response.data?.recommendations || [];
           console.log("📦 받은 상품 데이터:", products);
 
           // 🔥 안전한 변환 함수 사용
@@ -549,8 +554,8 @@ const FinPickPremiumMap = () => {
             content: `🎯 AI 분석 결과: ${
               convertedProducts.length
             }개의 맞춤 상품을 발견했어요! (적합도 평균 ${Math.round(
-              response.data.summary?.average_match_score || 85
-            )}점) 📍`,
+              response.data?.ai_insights?.confidence_score * 100 || 85
+            )}점) 📍`, // ai_insights 접근 방식 수정
             timestamp: new Date(),
           };
 

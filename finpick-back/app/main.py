@@ -1,9 +1,9 @@
-# finpick-back/main.py 또는 finpick-back/app/main.py
+# finpick-back/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import auth
-from app.api import recommendations  # 🔧 추천 라우터 import 추가!
+from app.api import recommendations  # 추가!
 
 app = FastAPI(
     title="FinPick API",
@@ -22,7 +22,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])  # 🔧 추가!
+app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])  # 추가!
 
 @app.get("/")
 async def root():
@@ -32,7 +32,7 @@ async def root():
         "status": "running",
         "endpoints": {
             "auth": "/api/auth",
-            "recommendations": "/api/recommendations",  # 🔧 추가!
+            "recommendations": "/api/recommendations",  # 추가!
             "docs": "/docs",
             "health": "/health"
         }
@@ -59,7 +59,7 @@ async def api_status():
         
         return {
             "status": "operational",
-            "ai_status": "connected" if service.use_ai else "fallback_mode",  # 🤖 AI 상태 추가
+            "ai_status": "connected" if service.use_ai else "fallback_mode",
             "data_stats": {
                 "total_products": product_count,
                 "product_types": ["정기예금", "적금", "신용대출"],

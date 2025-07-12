@@ -1,46 +1,351 @@
 # finpick-back/app/services/gemini_service.py
-import os
 import json
-import re
-from typing import Dict, List, Any, Optional
+import os
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
-from dotenv import load_dotenv  # 🔥 추가
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 class GeminiService:
-    """Gemini API 연동 서비스"""
-    
     def __init__(self):
-        # 🔥 환경변수 명시적 로딩
         load_dotenv()
-        
         self.api_key = os.getenv('GEMINI_API_KEY')
-        print(f"🔍 GeminiService에서 API 키 확인: {self.api_key[:10] if self.api_key else 'NOT_FOUND'}...")
         
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
-            
+        
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         print("✅ GeminiService 초기화 성공")
     
-    async def analyze_natural_language(self, user_query: str) -> Dict[str, Any]:
-        """자연어 입력을 분석하여 금융 조건 추출"""
+    async def recommend_products(
+        self, 
+        user_query: str, 
+        user_profile: Optional[Dict] = None,
+        available_products: List[Dict] = None,
+        limit: int = 5
+    ) -> Dict[str, Any]:
         try:
-            # Gemini API 호출용 프롬프트 생성
+            print(f"🤖 Gemini 추천 시작: {user_query}")
+            
+            # 1단계: 도메인 분류
+            domain = await self.classify_user_domain(user_query)
+            
+            # 2단계: 해당 도메인 상품만 필터링
+            domain_products = self.filter_products_by_domain(available_products, domain)
+            
+            if not domain_products:
+                print(f"⚠️ {domain} 도메인에 상품이 없어서 전체 상품 사용")
+                domain_products = available_products[:50]
+            
+            # 3단계: 사용자 분석 (기존과 동일)
+            user_analysis = await self._analyze_user_requirements(user_query, user_profile)
+            
+            # 4단계: 도메인 상품 데이터 준비
+            product_summaries = self._prepare_domain_product_data(domain_products)
+            
+            # 5단계: AI가 해당 도메인 상품들을 정밀 분석
+            recommendations = await self._evaluate_domain_products(
+                user_analysis, product_summaries, domain_products, domain, limit
+            )
+            
+            # 6단계: 결과 정리
+            final_result = await self._finalize_recommendations(
+                user_query, user_analysis, recommendations
+            )
+            
+            # 도메인 정보 추가
+            final_result["classified_domain"] = domain
+            final_result["domain_products_count"] = len(domain_products)
+            
+            return final_result
+            
+        except Exception as e:
+            print(f"❌ Gemini 추천 오류: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "fallback_message": "AI 추천에 실패했습니다."
+            }
+    
+    async def _analyze_user_requirements(self, user_query: str, user_profile: Optional[Dict]) -> Dict[str, Any]:
+        profile_info = ""
+        if user_profile:
+            profile_info = f"""
+사용자 프로필:
+- 나이: {user_profile.get('age', '정보없음')}
+- 직업: {user_profile.get('occupation', '정보없음')}
+- 월 소득: {user_profile.get('monthly_income', '정보없음')}
+- 투자 경험: {user_profile.get('investment_experience', '정보없음')}
+- 위험 성향: {user_profile.get('risk_tolerance', '정보없음')}
+"""
+        
+        prompt = f"""
+사용자 입력: "{user_query}"
+{profile_info}
+
+다음 JSON 형식으로 분석 결과를 반환:
+{{
+    "investment_goal": "구체적인 투자 목표",
+    "risk_appetite": "위험선호도 (1-10점)",
+    "investment_period": "선호 투자기간 (단기/중기/장기)",
+    "target_amount": "목표 금액 (원)",
+    "monthly_budget": "월 가능 투자금액 (원)",
+    "product_preferences": ["선호하는 상품 유형들"],
+    "special_requirements": ["특별 요구사항들"],
+    "urgency_level": "긴급도 (1-10점)",
+    "analysis_confidence": "분석 신뢰도 (0.0-1.0)"
+}}
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            print(f"🔍 Gemini 원본 응답: {response.text[:200]}...")
+            
+            # JSON 코드 블록 제거
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]  # '```json' 제거
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]  # '```' 제거
+            response_text = response_text.strip()
+            
+            result = json.loads(response_text)
+            print(f"✅ JSON 파싱 성공!")
+            return result
+        except Exception as e:
+            print(f"⚠️ 사용자 분석 실패: {e}")
+            print(f"🔍 Gemini 응답 타입: {type(response.text) if 'response' in locals() else 'No response'}")
+            print(f"🔍 Gemini 응답 내용: '{response.text}'" if 'response' in locals() else 'No response')
+            return self._fallback_user_analysis(user_query)
+    
+    def _prepare_product_data(self, products: List[Dict]) -> List[Dict]:
+        summaries = []
+        
+        for product in products[:50]:
+            summary = {
+                "id": product.get('id', ''),
+                "name": product.get('name', ''),
+                "type": product.get('type', ''),
+                "bank": product.get('provider', {}).get('name', ''),
+                "interest_rate": product.get('details', {}).get('interest_rate', 0),
+                "minimum_amount": product.get('details', {}).get('minimum_amount', 0),
+                "maximum_amount": product.get('details', {}).get('maximum_amount', 0),
+                "subscription_period": product.get('details', {}).get('subscription_period', ''),
+                "maturity_period": product.get('details', {}).get('maturity_period', ''),
+                "join_conditions": product.get('conditions', {}).get('join_member', ''),
+                "join_ways": product.get('conditions', {}).get('join_way', []),
+                "special_conditions": product.get('conditions', {}).get('special_conditions', ''),
+                "key_features": product.get('details', {}).get('description', '')[:100]
+            }
+            summaries.append(summary)
+        
+        return summaries
+    
+    async def _evaluate_products(
+        self, 
+        user_analysis: Dict, 
+        product_summaries: List[Dict], 
+        full_products: List[Dict],
+        limit: int
+    ) -> List[Dict]:
+        
+        products_json = json.dumps(product_summaries, ensure_ascii=False, indent=2)
+        
+        prompt = f"""
+사용자 분석 결과:
+{json.dumps(user_analysis, ensure_ascii=False, indent=2)}
+
+사용가능한 금융상품들:
+{products_json}
+
+위 상품들을 분석해서 사용자에게 가장 적합한 상위 {limit}개 상품을 추천해주세요.
+
+다음 JSON 형식으로 응답:
+{{
+    "recommendations": [
+        {{
+            "product_id": "상품 ID",
+            "product_name": "상품명",
+            "ai_score": "AI 추천 점수 (0-100)",
+            "match_reason": "추천 이유 (50자 이내)",
+            "pros": ["장점1", "장점2", "장점3"],
+            "cons": ["단점1", "단점2"],
+            "risk_assessment": "위험도 평가 (낮음/보통/높음)",
+            "expected_return": "예상 수익률 또는 설명",
+            "recommendation_priority": "우선순위 (1-{limit})"
+        }}
+    ],
+    "overall_analysis": "전체적인 추천 분석 (100자 이내)",
+    "investment_advice": "투자 조언 (100자 이내)"
+}}
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            print(f"🔍 Gemini 상품평가 응답: {response.text[:200]}...")
+            
+            # JSON 코드 블록 제거
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            result = json.loads(response_text)
+            print(f"✅ 상품평가 JSON 파싱 성공!")
+            
+            enhanced_recommendations = []
+            for rec in result.get("recommendations", []):
+                original_product = None
+                for product in full_products:
+                    if (product.get('id') == rec.get('product_id') or 
+                        product.get('name') == rec.get('product_name')):
+                        original_product = product
+                        break
+                
+                if original_product:
+                    enhanced_rec = {
+                        **rec,
+                        "original_product": original_product,
+                        "ai_generated": True,
+                        "analysis_timestamp": datetime.now().isoformat()
+                    }
+                    enhanced_recommendations.append(enhanced_rec)
+            
+            result["recommendations"] = enhanced_recommendations
+            return result
+            
+        except Exception as e:
+            print(f"⚠️ AI 상품 평가 실패: {e}")
+            print(f"🔍 상품평가 응답: '{response.text}'" if 'response' in locals() else 'No response')
+            return self._fallback_evaluation(product_summaries, user_analysis, limit)
+    
+    async def _finalize_recommendations(
+        self, 
+        original_query: str, 
+        user_analysis: Dict, 
+        ai_recommendations: Dict
+    ) -> Dict[str, Any]:
+        
+        return {
+            "success": True,
+            "original_query": original_query,
+            "user_analysis": user_analysis,
+            "ai_recommendations": ai_recommendations.get("recommendations", []),
+            "overall_analysis": ai_recommendations.get("overall_analysis", "AI 분석 완료"),
+            "investment_advice": ai_recommendations.get("investment_advice", "신중한 투자 결정을 권장합니다"),
+            "recommendation_method": "Gemini AI 기반 종합 분석",
+            "confidence_score": user_analysis.get("analysis_confidence", 0.8),
+            "timestamp": datetime.now().isoformat(),
+            "total_products_analyzed": len(ai_recommendations.get("recommendations", [])),
+            "processing_time": "AI 실시간 분석"
+        }
+    
+    def _fallback_user_analysis(self, user_query: str) -> Dict[str, Any]:
+        risk_keywords = {
+            "안전": 2, "보수": 2, "위험": 8, "공격": 9, "거칠게": 9, "마구": 8
+        }
+        
+        amount_patterns = [
+            (r'(\d+)만원', lambda x: int(x) * 10000),
+            (r'(\d+)원', lambda x: int(x))
+        ]
+        
+        risk_score = 5
+        for keyword, score in risk_keywords.items():
+            if keyword in user_query:
+                risk_score = score
+                break
+        
+        target_amount = 0
+        for pattern, converter in amount_patterns:
+            import re
+            match = re.search(pattern, user_query)
+            if match:
+                target_amount = converter(match.group(1))
+                break
+        
+        return {
+            "investment_goal": "수익 추구" if risk_score > 6 else "안전한 저축",
+            "risk_appetite": risk_score,
+            "investment_period": "단기" if "빨리" in user_query or "단기" in user_query else "중기",
+            "target_amount": target_amount,
+            "monthly_budget": target_amount,
+            "product_preferences": ["투자상품"] if risk_score > 6 else ["예금", "적금"],
+            "special_requirements": [],
+            "urgency_level": 7 if "빨리" in user_query else 5,
+            "analysis_confidence": 0.6
+        }
+    
+    def _fallback_evaluation(self, products: List[Dict], user_analysis: Dict, limit: int) -> Dict:
+        scored_products = []
+        
+        for product in products[:limit*2]:
+            score = 50
+            
+            rate = product.get('interest_rate', 0)
+            if rate >= 4.0:
+                score += 30
+            elif rate >= 3.0:
+                score += 20
+            elif rate >= 2.0:
+                score += 10
+            
+            user_risk = user_analysis.get('risk_appetite', 5)
+            product_type = product.get('type', '')
+            
+            if user_risk <= 3:
+                if '예금' in product_type or '적금' in product_type:
+                    score += 20
+            elif user_risk >= 7:
+                if '투자' in product_type:
+                    score += 20
+            
+            min_amount = product.get('minimum_amount', 0)
+            user_budget = user_analysis.get('monthly_budget', float('inf'))
+            
+            if min_amount <= user_budget:
+                score += 15
+            
+            scored_products.append({
+                "product_id": product.get('id', ''),
+                "product_name": product.get('name', ''),
+                "ai_score": min(100, score),
+                "match_reason": f"금리 {rate}%, 조건 적합",
+                "pros": ["규칙 기반 매칭"],
+                "cons": ["AI 분석 불가"],
+                "risk_assessment": "보통",
+                "expected_return": f"예상 수익률 {rate}%",
+                "recommendation_priority": 1,
+                "original_product": product
+            })
+        
+        scored_products.sort(key=lambda x: x['ai_score'], reverse=True)
+        
+        return {
+            "recommendations": scored_products[:limit],
+            "overall_analysis": "규칙 기반 분석으로 처리되었습니다",
+            "investment_advice": "상품을 자세히 비교해보세요"
+        }
+
+    async def analyze_natural_language(self, user_query: str) -> Dict[str, Any]:
+        try:
             prompt = self._create_analysis_prompt(user_query)
             
-            # 🔥 실제 Gemini API 호출 구현
             try:
-                import google.generativeai as genai
+                response = self.model.generate_content(prompt)
                 
-                genai.configure(api_key=self.api_key)
-                model = genai.GenerativeModel('gemini-2.0-flash')
-                
-                response = model.generate_content(prompt)
-                
-                # JSON 응답 파싱 시도
                 try:
-                    # 응답에서 JSON 부분만 추출
                     response_text = response.text
                     if '{' in response_text and '}' in response_text:
+                        # JSON 코드 블록 제거
+                        if response_text.strip().startswith('```json'):
+                            response_text = response_text.strip()[7:]
+                        if response_text.strip().endswith('```'):
+                            response_text = response_text.strip()[:-3]
+                        
                         json_start = response_text.find('{')
                         json_end = response_text.rfind('}') + 1
                         json_str = response_text[json_start:json_end]
@@ -57,13 +362,11 @@ class GeminiService:
                             "timestamp": datetime.now().isoformat()
                         }
                     else:
-                        # JSON 파싱 실패 시 규칙 기반으로 폴백
                         print("⚠️ Gemini 응답을 JSON으로 파싱할 수 없음, 규칙 기반으로 폴백")
                         raise ValueError("JSON 파싱 실패")
                         
                 except (json.JSONDecodeError, ValueError) as e:
                     print(f"⚠️ Gemini 응답 파싱 실패: {e}, 규칙 기반으로 폴백")
-                    # 규칙 기반 분석으로 폴백
                     analysis_result = self._rule_based_analysis(user_query)
                     
                     return {
@@ -78,7 +381,6 @@ class GeminiService:
                     
             except ImportError:
                 print("⚠️ google-generativeai 패키지가 설치되지 않음, 규칙 기반으로 폴백")
-                # 규칙 기반 분석으로 폴백
                 analysis_result = self._rule_based_analysis(user_query)
                 
                 return {
@@ -92,7 +394,6 @@ class GeminiService:
                 }
             except Exception as e:
                 print(f"⚠️ Gemini API 호출 실패: {e}, 규칙 기반으로 폴백")
-                # 규칙 기반 분석으로 폴백
                 analysis_result = self._rule_based_analysis(user_query)
                 
                 return {
@@ -113,60 +414,91 @@ class GeminiService:
             }
     
     def _create_analysis_prompt(self, user_query: str) -> str:
-        """Gemini API용 분석 프롬프트 생성"""
         return f"""
-당신은 금융상품 추천 전문 AI입니다. 사용자의 자연어 입력을 분석하여 다음 정보를 JSON 형태로 추출해주세요:
-
 사용자 입력: "{user_query}"
 
-추출해야 할 정보:
-1. 투자 목적 (안전한_저축, 목돈_마련, 투자_수익, 노후_준비, 비상금_마련, 내집_마련)
-2. 희망 금액 (최소금액, 목표금액, 월납입액)
-3. 투자 기간 (단기, 중기, 장기 또는 구체적 기간)
-4. 위험 성향 (안전추구형, 균형추구형, 수익추구형)
-5. 상품 유형 (정기예금, 적금, 신용대출, 주택담보대출, 투자상품)
-6. 특별 조건 (청년, 시니어, 직장인 등)
-
-반드시 다음 JSON 형식으로만 응답해주세요:
+다음 JSON 형식으로 분석 결과를 반환하세요:
 {{
-  "investment_purpose": "목적",
-  "amount": {{
-    "minimum_amount": 숫자또는null,
-    "target_amount": 숫자또는null,
-    "monthly_amount": 숫자또는null
-  }},
-  "investment_period": "기간",
-  "risk_tolerance": "위험성향",
-  "product_types": ["상품유형1", "상품유형2"],
-  "special_conditions": ["조건1", "조건2"],
-  "confidence": 0.8,
-  "reason": "분석 근거"
+    "investment_goal": "구체적인 투자 목표",
+    "risk_appetite": 5,
+    "investment_period": "단기/중기/장기",
+    "target_amount": 500000,
+    "monthly_budget": 100000,
+    "product_preferences": ["예금", "적금", "대출"],
+    "special_requirements": ["특별 요구사항"],
+    "urgency_level": 7,
+    "analysis_confidence": 0.8
 }}
-"""
 
+중요한 규칙:
+1. risk_appetite는 1-10 숫자만 사용 (문자열 금지)
+2. target_amount는 숫자만 사용 (단위: 원)
+3. monthly_budget는 숫자 또는 null만 사용
+4. urgency_level은 1-10 숫자만 사용
+5. analysis_confidence는 0.0-1.0 소수점 사용
+6. 알 수 없는 값은 기본값 사용: risk_appetite=5, urgency_level=5
+7. JSON 형식만 반환하고 다른 설명 금지
+"""
+    
     def _rule_based_analysis(self, user_query: str) -> Dict[str, Any]:
-        """규칙 기반 자연어 분석 (Gemini API 폴백)"""
-        query_lower = user_query.lower()
+        import re
         
-        # 1. 투자 목적 분석
-        purpose = self._extract_investment_purpose(query_lower)
+        purpose_keywords = {
+            "불리": "투자_수익", "수익": "투자_수익", "벌": "투자_수익", "거칠게": "투자_수익",
+            "안전": "안전한_저축", "보수": "안전한_저축", "저축": "안전한_저축",
+            "비상": "비상금_마련", "급할": "비상금_마련",
+            "집": "내집_마련", "주택": "내집_마련", "아파트": "내집_마련"
+        }
         
-        # 2. 금액 추출
-        amounts = self._extract_amounts(user_query)
+        risk_keywords = {
+            "안전": "안전추구형", "보수": "안전추구형",
+            "위험": "수익추구형", "공격": "수익추구형", "거칠게": "수익추구형", "마구": "수익추구형"
+        }
         
-        # 3. 기간 추출
-        period = self._extract_period(query_lower)
+        period_keywords = {
+            "빨리": "단기", "단기": "단기", "급": "단기",
+            "장기": "장기", "오래": "장기",
+        }
         
-        # 4. 위험 성향 분석
-        risk_tolerance = self._extract_risk_tolerance(query_lower)
+        purpose = "안전한_저축"
+        for keyword, p in purpose_keywords.items():
+            if keyword in user_query:
+                purpose = p
+                break
         
-        # 5. 상품 유형 추론
-        product_types = self._infer_product_types(query_lower, purpose)
+        risk_tolerance = "안정추구형"
+        for keyword, r in risk_keywords.items():
+            if keyword in user_query:
+                risk_tolerance = r
+                break
         
-        # 6. 특별 조건 추출
-        special_conditions = self._extract_special_conditions(query_lower)
+        period = "중기"
+        for keyword, p in period_keywords.items():
+            if keyword in user_query:
+                period = p
+                break
         
-        # 7. 신뢰도 계산
+        amounts = {"minimum_amount": None, "target_amount": None, "monthly_amount": None}
+        
+        amount_patterns = [
+            (r'(\d+)만원', lambda x: int(x) * 10000),
+            (r'(\d+)원', lambda x: int(x))
+        ]
+        
+        for pattern, converter in amount_patterns:
+            match = re.search(pattern, user_query)
+            if match:
+                amount = converter(match.group(1))
+                amounts["minimum_amount"] = amount
+                amounts["target_amount"] = amount
+                break
+        
+        product_types = []
+        if purpose == "투자_수익" or risk_tolerance == "수익추구형":
+            product_types = ["투자상품"]
+        else:
+            product_types = ["예금상품", "적금상품"]
+        
         confidence = self._calculate_confidence(user_query, purpose, amounts, period)
         
         return {
@@ -176,267 +508,194 @@ class GeminiService:
                 "investment_period": period,
                 "risk_tolerance": risk_tolerance,
                 "product_types": product_types,
-                "special_conditions": special_conditions
+                "special_conditions": [],
+                "confidence": confidence,
+                "reason": f"키워드 기반 분석: {purpose}, {risk_tolerance}, {period}"
             },
             "confidence": confidence,
-            "product_types": product_types,
-            "reason": "규칙 기반 키워드 분석"
+            "product_types": product_types
         }
-    
-    def _extract_investment_purpose(self, query: str) -> str:
-        """투자 목적 추출"""
-        purpose_keywords = {
-            "안전한_저축": ["안전", "보장", "확실", "리스크없", "위험없"],
-            "목돈_마련": ["목돈", "목표", "모으", "적립", "저축"],
-            "투자_수익": ["수익", "벌", "이익", "투자", "수익률"],
-            "노후_준비": ["노후", "은퇴", "연금", "나이"],
-            "비상금_마련": ["비상", "응급", "예비", "비상금"],
-            "내집_마련": ["집", "주택", "아파트", "부동산", "내집"]
-        }
-        
-        for purpose, keywords in purpose_keywords.items():
-            if any(keyword in query for keyword in keywords):
-                return purpose
-        
-        return "안전한_저축"  # 기본값
-    
-    def _extract_amounts(self, query: str) -> Dict[str, Optional[int]]:
-        """금액 정보 추출"""
-        import re
-        
-        amounts = {
-            "minimum_amount": None,
-            "target_amount": None,
-            "monthly_amount": None
-        }
-        
-        # 숫자 + 단위 패턴 매칭
-        patterns = [
-            (r'(\d+)만원?', 10000),
-            (r'(\d+)천만원?', 10000000),
-            (r'(\d+)억', 100000000),
-            (r'(\d+)원', 1)
-        ]
-        
-        for pattern, multiplier in patterns:
-            matches = re.findall(pattern, query)
-            if matches:
-                amount = int(matches[0]) * multiplier
-                
-                # 문맥에 따라 분류
-                if "월" in query or "매월" in query:
-                    amounts["monthly_amount"] = amount
-                elif "목표" in query or "총" in query:
-                    amounts["target_amount"] = amount
-                else:
-                    amounts["minimum_amount"] = amount
-                break
-        
-        return amounts
-    
-    def _extract_period(self, query: str) -> str:
-        """투자 기간 추출"""
-        if any(word in query for word in ["1년", "12개월", "단기"]):
-            return "단기"
-        elif any(word in query for word in ["2년", "3년", "24개월", "36개월"]):
-            return "중기"
-        elif any(word in query for word in ["5년", "장기", "오래"]):
-            return "장기"
-        else:
-            return "중기"  # 기본값
-    
-    def _extract_risk_tolerance(self, query: str) -> str:
-        """위험 성향 추출"""
-        if any(word in query for word in ["안전", "보장", "확실", "위험없"]):
-            return "안전추구형"
-        elif any(word in query for word in ["수익", "벌", "이익", "높은"]):
-            return "수익추구형"
-        else:
-            return "균형추구형"  # 기본값
-    
-    def _infer_product_types(self, query: str, purpose: str) -> List[str]:
-        """상품 유형 추론"""
-        product_types = []
-        
-        # 직접적인 상품명 언급
-        if "예금" in query:
-            product_types.append("정기예금")
-        if "적금" in query:
-            product_types.append("적금")
-        if "대출" in query:
-            product_types.append("신용대출")
-        if any(word in query for word in ["투자", "펀드", "주식"]):
-            product_types.append("투자상품")
-        
-        # 목적 기반 추론
-        if not product_types:
-            if purpose == "안전한_저축":
-                product_types = ["정기예금", "적금"]
-            elif purpose == "목돈_마련":
-                product_types = ["적금"]
-            elif purpose == "투자_수익":
-                product_types = ["투자상품"]
-            elif purpose == "내집_마련":
-                product_types = ["적금", "주택담보대출"]
-            else:
-                product_types = ["적금"]  # 기본값
-        
-        return product_types
-    
-    def _extract_special_conditions(self, query: str) -> List[str]:
-        """특별 조건 추출"""
-        conditions = []
-        
-        condition_keywords = {
-            "청년": ["청년", "젊은", "20대", "30대"],
-            "시니어": ["시니어", "중년", "50대", "60대"],
-            "직장인": ["직장", "회사원", "근로자"],
-            "자영업": ["자영업", "사업자", "프리랜서"]
-        }
-        
-        for condition, keywords in condition_keywords.items():
-            if any(keyword in query for keyword in keywords):
-                conditions.append(condition)
-        
-        return conditions
     
     def _calculate_confidence(self, query: str, purpose: str, amounts: Dict, period: str) -> float:
-        """분석 신뢰도 계산"""
-        confidence = 0.5  # 기본값
+        confidence = 0.5
         
-        # 명확한 키워드가 있으면 신뢰도 증가
-        if purpose != "안전한_저축":  # 기본값이 아닌 경우
+        if purpose != "안전한_저축":
             confidence += 0.2
         
-        if any(amounts.values()):  # 금액 정보가 있는 경우
+        if any(amounts.values()):
             confidence += 0.2
         
-        if period != "중기":  # 기본값이 아닌 경우
+        if period != "중기":
             confidence += 0.1
         
-        # 구체적인 상품명이 언급된 경우
         product_keywords = ["예금", "적금", "대출", "펀드", "etf"]
         if any(keyword in query for keyword in product_keywords):
             confidence += 0.2
         
         return min(1.0, confidence)
-    
-    async def enhance_recommendation_reason(self, user_profile: Dict, product: Dict, match_score: float) -> str:
-        """Gemini API로 추천 이유 생성"""
-        try:
-            # 🔥 실제 Gemini API 사용 시도
-            try:
-                import google.generativeai as genai
-                
-                genai.configure(api_key=self.api_key)
-                model = genai.GenerativeModel('gemini-2.0-flash')
-                
-                prompt = f"""
-다음 사용자에게 이 금융상품을 추천하는 이유를 친근하고 이해하기 쉽게 설명해주세요:
 
-사용자 정보:
-- 나이: {user_profile.get('age', '정보없음')}
-- 투자목적: {user_profile.get('goal', '정보없음')}
-- 위험성향: {user_profile.get('risk_tolerance', '정보없음')}
+    async def classify_user_domain(self, user_query: str) -> str:
+        """사용자 요청을 도메인별로 분류"""
+        
+        prompt = f"""
+사용자 입력: "{user_query}"
 
-상품 정보:
-- 상품명: {product.get('name', '')}
-- 금리: {product.get('interest_rate', 0)}%
-- 상품타입: {product.get('type', '')}
-- 은행: {product.get('provider', {}).get('name', '')}
+위 요청이 다음 중 어떤 금융 도메인에 해당하는지 하나만 선택하세요:
 
-적합도: {match_score}점
+1. "예금" - 안전한 저축, 목돈 보관, 이자 수익 등
+2. "적금" - 매월 적립, 목돈 만들기, 장기 저축 등  
+3. "대출" - 돈 빌리기, 급전, 자금 필요, 융자 등
 
-50자 이내로 추천 이유를 작성해주세요.
+응답은 "예금", "적금", "대출" 중 하나만 반환하세요.
 """
+        
+        try:
+            response = self.model.generate_content(prompt)
+            domain = response.text.strip().replace('"', '')
+            
+            if domain in ["예금", "적금", "대출"]:
+                print(f"🎯 도메인 분류: {user_query} → {domain}")
+                return domain
+            else:
+                print(f"⚠️ 알 수 없는 도메인: {domain}, 기본값 '예금' 사용")
+                return "예금"
                 
-                response = model.generate_content(prompt)
-                ai_reason = response.text.strip()
+        except Exception as e:
+            print(f"❌ 도메인 분류 실패: {e}, 기본값 '예금' 사용")
+            return "예금"
+
+    def filter_products_by_domain(self, products: List[Dict], domain: str) -> List[Dict]:
+        """도메인별로 상품 필터링"""
+        
+        domain_keywords = {
+            "예금": ["예금", "deposit"],
+            "적금": ["적금", "savings"],  
+            "대출": ["대출", "loan", "credit"]
+        }
+        
+        keywords = domain_keywords.get(domain, ["예금"])
+        filtered = []
+        
+        for product in products:
+            product_type = product.get('type', '').lower()
+            if any(keyword in product_type for keyword in keywords):
+                filtered.append(product)
+        
+        print(f"📊 {domain} 도메인 상품: {len(filtered)}개")
+        return filtered
+
+    def _prepare_domain_product_data(self, products: List[Dict]) -> List[Dict]:
+        """도메인 특화 상품 데이터 준비 (기존보다 더 자세히)"""
+        summaries = []
+        
+        for product in products:  # 전체 도메인 상품 모두 사용
+            summary = {
+                "id": product.get('id', ''),
+                "name": product.get('name', ''),
+                "type": product.get('type', ''),
+                "bank": product.get('provider', {}).get('name', ''),
+                "interest_rate": product.get('details', {}).get('interest_rate', 0),
+                "minimum_amount": product.get('details', {}).get('minimum_amount', 0),
+                "maximum_amount": product.get('details', {}).get('maximum_amount', 0),
+                "subscription_period": product.get('details', {}).get('subscription_period', ''),
+                "maturity_period": product.get('details', {}).get('maturity_period', ''),
+                "join_conditions": product.get('conditions', {}).get('join_member', ''),
+                "join_ways": product.get('conditions', {}).get('join_way', []),
+                "special_conditions": product.get('conditions', {}).get('special_conditions', ''),
+                "key_features": product.get('details', {}).get('description', '')[:150]
+            }
+            summaries.append(summary)
+        
+        return summaries
+
+    async def _evaluate_domain_products(
+        self, 
+        user_analysis: Dict, 
+        product_summaries: List[Dict], 
+        full_products: List[Dict],
+        domain: str,
+        limit: int
+    ) -> List[Dict]:
+        """도메인별 전문 상품 평가"""
+        
+        products_json = json.dumps(product_summaries, ensure_ascii=False, indent=2)
+        
+        domain_specific_instructions = {
+            "예금": "안전성과 금리를 중심으로 평가하고, 예금자보호 여부와 은행 신뢰도를 고려하세요.",
+            "적금": "적립 조건, 만기 혜택, 중도해지 조건을 중심으로 평가하세요.",
+            "대출": "금리, 한도, 상환 조건, 담보 여부를 중심으로 평가하고 사용자의 급박함을 고려하세요."
+        }
+        
+        instruction = domain_specific_instructions.get(domain, "종합적으로 평가하세요.")
+        
+        prompt = f"""
+당신은 {domain} 전문 금융 분석가입니다.
+
+사용자 분석 결과:
+{json.dumps(user_analysis, ensure_ascii=False, indent=2)}
+
+{domain} 전문 상품들:
+{products_json}
+
+{instruction}
+
+상위 {limit}개 상품을 추천해주세요.
+
+응답 형식:
+{{
+    "recommendations": [
+        {{
+            "product_id": "상품 ID",
+            "product_name": "상품명",
+            "ai_score": 95,
+            "match_reason": "{domain} 전문 분석 이유 (50자 이내)",
+            "pros": ["장점1", "장점2", "장점3"],
+            "cons": ["단점1", "단점2"],
+            "risk_assessment": "낮음/보통/높음",
+            "expected_return": "예상 결과",
+            "recommendation_priority": 1
+        }}
+    ],
+    "domain_analysis": "{domain} 도메인 전문 분석 (100자 이내)",
+    "investment_advice": "해당 도메인 맞춤 조언 (100자 이내)"
+}}
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            result = json.loads(response_text)
+            print(f"✅ {domain} 도메인 상품평가 성공!")
+            
+            enhanced_recommendations = []
+            for rec in result.get("recommendations", []):
+                original_product = None
+                for product in full_products:
+                    if (product.get('id') == rec.get('product_id') or 
+                        product.get('name') == rec.get('product_name')):
+                        original_product = product
+                        break
                 
-                # 50자 제한
-                if len(ai_reason) > 50:
-                    ai_reason = ai_reason[:47] + "..."
-                
-                return ai_reason
-                
-            except Exception as e:
-                print(f"⚠️ Gemini 추천 이유 생성 실패: {e}, 규칙 기반으로 폴백")
-                return self._generate_simple_reason(product, match_score)
+                if original_product:
+                    enhanced_rec = {
+                        **rec,
+                        "original_product": original_product,
+                        "domain": domain,
+                        "ai_generated": True,
+                        "analysis_timestamp": datetime.now().isoformat()
+                    }
+                    enhanced_recommendations.append(enhanced_rec)
+            
+            result["recommendations"] = enhanced_recommendations
+            return result
             
         except Exception as e:
-            return f"안정적인 {product.get('type', '상품')}으로 추천합니다"
-    
-    def _generate_simple_reason(self, product: Dict, match_score: float) -> str:
-        """간단한 추천 이유 생성"""
-        rate = product.get('details', {}).get('interest_rate', 0)
-        product_type = product.get('type', '')
-        
-        reasons = []
-        
-        if rate >= 3.5:
-            reasons.append("높은 금리")
-        elif rate >= 3.0:
-            reasons.append("적정 금리")
-        
-        if match_score >= 90:
-            reasons.append("맞춤 조건 부합")
-        elif match_score >= 80:
-            reasons.append("조건 적합")
-        
-        if "적금" in product_type:
-            reasons.append("안정적 저축")
-        elif "예금" in product_type:
-            reasons.append("안전한 투자")
-        elif "대출" in product_type:
-            reasons.append("합리적 조건")
-        
-        return ", ".join(reasons[:2]) if reasons else "추천 상품"
-    
-    async def generate_financial_advice(self, user_profile: Dict, recommendations: List[Dict]) -> str:
-        """사용자 맞춤 금융 조언 생성"""
-        try:
-            # 🔥 실제 Gemini API 사용 시도
-            try:
-                import google.generativeai as genai
-                
-                genai.configure(api_key=self.api_key)
-                model = genai.GenerativeModel('gemini-2.0-flash')
-                
-                prompt = f"""
-다음 사용자에게 맞춤형 금융 조언을 해주세요:
-
-사용자 프로필: {json.dumps(user_profile, ensure_ascii=False)}
-추천 상품 수: {len(recommendations)}
-
-100자 이내로 친근하고 도움이 되는 조언을 해주세요.
-"""
-                
-                response = model.generate_content(prompt)
-                advice = response.text.strip()
-                
-                # 100자 제한
-                if len(advice) > 100:
-                    advice = advice[:97] + "..."
-                
-                return advice
-                
-            except Exception as e:
-                print(f"⚠️ Gemini 조언 생성 실패: {e}, 규칙 기반으로 폴백")
-                return self._generate_simple_advice(user_profile, len(recommendations))
-            
-        except Exception as e:
-            return "다양한 상품을 비교해보시고 신중하게 선택하세요!"
-    
-    def _generate_simple_advice(self, user_profile: Dict, product_count: int) -> str:
-        """간단한 금융 조언 생성"""
-        age = user_profile.get('basic_info', {}).get('age', '정보없음')
-        goal = user_profile.get('goal_setting', {}).get('primary_goal', '정보없음')
-        
-        if age == "20대":
-            return f"{product_count}개 상품 중에서 장기 적금을 고려해보세요. 젊을수록 복리 효과가 큽니다!"
-        elif age == "30대":
-            return f"안정성과 수익성의 균형을 맞춘 {product_count}개 상품을 추천드려요."
-        elif age == "40대":
-            return f"안정적인 자산 증식을 위한 {product_count}개 상품을 확인해보세요."
-        else:
-            return f"{product_count}개의 맞춤 상품으로 목표를 달성해보세요!"
+            print(f"⚠️ {domain} 도메인 상품 평가 실패: {e}")
+            return self._fallback_evaluation(product_summaries, user_analysis, limit)
