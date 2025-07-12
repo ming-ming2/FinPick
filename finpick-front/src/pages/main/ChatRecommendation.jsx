@@ -7,26 +7,28 @@ import {
   Shield,
   PiggyBank,
   Home,
-  Zap,
-  Star,
-  Menu,
   X,
   MapPin,
   Activity,
-  Database,
-  Clock,
   Building,
-  Users,
-  BarChart3,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
+// 🔗 API 서비스 import (Adjust path if necessary)
+import {
+  SmartRecommendationService,
+  ApiUtils,
+} from "../../services/backendApi";
+
 const FinPickPremiumMap = () => {
+  // --- State and Refs ---
   const [messages, setMessages] = useState([
     {
       id: 1,
       type: "ai",
       content:
-        "안녕하세요! 원하는 금융상품을 말씀해주세요. 지도에서 딱 맞는 상품들을 찾아드릴게요! 🗺️",
+        "안녕하세요! 원하는 금융상품을 말씀해주세요. AI가 실시간으로 최적의 상품들을 찾아드릴게요! 🗺️",
       timestamp: new Date(),
     },
   ]);
@@ -36,6 +38,12 @@ const FinPickPremiumMap = () => {
   const [pins, setPins] = useState([]);
   const [selectedPin, setSelectedPin] = useState(null);
   const [showChat, setShowChat] = useState(false);
+
+  // 🔗 API 연동 관련 상태
+  const [serverConnected, setServerConnected] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const [isCheckingConnection, setIsCheckingConnection] = useState(true);
+
   const [liveData, setLiveData] = useState({
     totalProducts: 340,
     institutions: 15,
@@ -43,6 +51,28 @@ const FinPickPremiumMap = () => {
     activeMining: true,
   });
   const mapRef = useRef(null);
+  const messagesEndRef = useRef(null); // Ref for auto-scrolling chat
+
+  // --- useEffect Hooks ---
+  // 🔗 서버 연결 상태 확인
+  useEffect(() => {
+    const checkConnection = async () => {
+      setIsCheckingConnection(true);
+      const isConnected = await ApiUtils.checkServerConnection();
+      setServerConnected(isConnected);
+      setIsCheckingConnection(false);
+
+      if (!isConnected) {
+        console.warn(
+          "⚠️ 백엔드 서버에 연결할 수 없습니다. 더미 데이터를 사용합니다."
+        );
+      } else {
+        console.log("✅ 백엔드 서버 연결됨");
+      }
+    };
+
+    checkConnection();
+  }, []);
 
   // 실시간 지표 카운터 애니메이션
   useEffect(() => {
@@ -71,63 +101,63 @@ const FinPickPremiumMap = () => {
     }
   }, [isLoading]);
 
-  // 지역별 금융 허브 데이터
+  // 채팅 자동 스크롤
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // --- Constant Data ---
+  // 🎯 금융 도메인별 허브 데이터
   const financialHubs = [
     {
-      name: "강남",
+      name: "예금/적금",
+      description: "안전한 저축상품",
+      x: 25,
+      y: 25,
+      color: "#3B82F6",
+      size: "large",
+      products: 296,
+      avgRate: 3.2,
+      riskLevel: "낮음",
+      keywords: ["안전", "저축", "적금", "예금", "안정", "보장"],
+    },
+    {
+      name: "투자상품",
+      description: "수익성 중심 상품",
       x: 75,
-      y: 30,
+      y: 25,
       color: "#10B981",
       size: "large",
       products: 85,
+      avgRate: 6.8,
+      riskLevel: "중-고위험",
+      keywords: ["투자", "수익", "펀드", "ETF", "주식", "채권"],
     },
     {
-      name: "여의도",
-      x: 65,
-      y: 40,
-      color: "#3B82F6",
+      name: "대출상품",
+      description: "자금조달 솔루션",
+      x: 25,
+      y: 75,
+      color: "#F59E0B",
       size: "large",
-      products: 92,
+      products: 44,
+      avgRate: 4.5,
+      riskLevel: "해당없음",
+      keywords: ["대출", "신용대출", "주택담보", "자금", "대여", "론"],
     },
     {
-      name: "서울역",
-      x: 60,
-      y: 35,
+      name: "특화상품",
+      description: "맞춤형 금융상품",
+      x: 75,
+      y: 75,
       color: "#8B5CF6",
       size: "medium",
-      products: 67,
-    },
-    {
-      name: "판교",
-      x: 80,
-      y: 50,
-      color: "#F59E0B",
-      size: "medium",
-      products: 54,
-    },
-    {
-      name: "부산",
-      x: 85,
-      y: 85,
-      color: "#EF4444",
-      size: "medium",
-      products: 43,
-    },
-    {
-      name: "대구",
-      x: 75,
-      y: 70,
-      color: "#06B6D4",
-      size: "small",
-      products: 31,
-    },
-    {
-      name: "광주",
-      x: 45,
-      y: 75,
-      color: "#84CC16",
-      size: "small",
-      products: 28,
+      products: 55,
+      avgRate: 4.1,
+      riskLevel: "다양",
+      keywords: ["특화", "맞춤", "프리미엄", "VIP", "개인화", "청년", "시니어"],
     },
   ];
 
@@ -159,32 +189,32 @@ const FinPickPremiumMap = () => {
     },
   };
 
-  // 샘플 상품 데이터 (확장)
+  // 🏦 도메인별 샘플 상품 데이터 (폴백용)
   const sampleProducts = {
-    안전: [
+    "예금/적금": [
       {
         id: 1,
         name: "KB국민은행 정기적금",
         type: "savings",
         rate: 3.5,
-        minAmount: 100,
+        minAmount: 10,
         suitability: 98,
         reason: "높은 금리, 낮은 위험도",
         monthlyAmount: 50,
         bank: "KB국민은행",
-        region: "강남",
+        domain: "예금/적금",
       },
       {
         id: 2,
         name: "신한 쌓이는적금",
         type: "savings",
         rate: 3.2,
-        minAmount: 10,
+        minAmount: 1,
         suitability: 92,
         reason: "낮은 최소금액, 높은 안정성",
-        monthlyAmount: 50,
+        monthlyAmount: 30,
         bank: "신한은행",
-        region: "여의도",
+        domain: "예금/적금",
       },
       {
         id: 3,
@@ -194,45 +224,114 @@ const FinPickPremiumMap = () => {
         minAmount: 50,
         suitability: 88,
         reason: "업계 최고 예금금리",
-        monthlyAmount: 50,
+        monthlyAmount: 0,
         bank: "우리은행",
-        region: "서울역",
+        domain: "예금/적금",
       },
     ],
-    투자: [
+    투자상품: [
       {
         id: 4,
         name: "삼성 밸런스펀드",
         type: "investment",
-        rate: 6.8,
+        rate: 7.2,
         minAmount: 10,
         suitability: 85,
         reason: "안정적 수익, 분산투자 효과",
         monthlyAmount: 30,
         bank: "삼성자산운용",
-        region: "판교",
+        domain: "투자상품",
       },
       {
         id: 5,
         name: "KODEX 200 ETF",
         type: "investment",
-        rate: 8.2,
+        rate: 8.5,
         minAmount: 1,
-        suitability: 78,
+        suitability: 82,
         reason: "시장 연동, 높은 유동성",
         monthlyAmount: 20,
         bank: "삼성자산운용",
-        region: "부산",
+        domain: "투자상품",
+      },
+    ],
+    대출상품: [
+      {
+        id: 6,
+        name: "KB 신용대출",
+        type: "loan",
+        rate: 4.2,
+        minAmount: 100,
+        suitability: 88,
+        reason: "낮은 금리, 빠른 승인",
+        monthlyAmount: 0,
+        bank: "KB국민은행",
+        domain: "대출상품",
+      },
+    ],
+    특화상품: [
+      {
+        id: 8,
+        name: "청년 창업지원 적금",
+        type: "savings",
+        rate: 4.0,
+        minAmount: 5,
+        suitability: 95,
+        reason: "청년 전용, 정부 지원금리",
+        monthlyAmount: 30,
+        bank: "기업은행",
+        domain: "특화상품",
       },
     ],
   };
 
-  // 핀 위치 생성 (지역 기반)
+  // --- Helper Functions ---
+  // 🔧 백엔드 상품 타입을 프론트엔드 타입으로 매핑
+  const mapProductType = (backendType) => {
+    const typeMap = {
+      정기예금: "deposit",
+      적금: "savings",
+      신용대출: "loan",
+      주택담보대출: "loan",
+      투자상품: "investment",
+    };
+    return typeMap[backendType] || "savings"; // 기본값 'savings'
+  };
+
+  // 🔧 상품 유형을 기반으로 도메인 추론
+  const inferDomain = (productType) => {
+    if (productType.includes("예금") || productType.includes("적금")) {
+      return "예금/적금";
+    } else if (productType.includes("대출")) {
+      return "대출상품";
+    } else if (productType.includes("투자") || productType.includes("펀드")) {
+      return "투자상품";
+    } else {
+      return "특화상품";
+    }
+  };
+
+  // 🔧 월 납입액 추정 (핀 상세 정보용)
+  const estimateMonthlyAmount = (product) => {
+    const minAmount = product.minimum_amount || 100000;
+    if (minAmount >= 10000000) return 0; // 대출은 월 납입이 없을 수 있음
+    return Math.max(1, Math.floor(minAmount / 10000 / 10));
+  };
+
+  // 🎯 도메인 기반 핀 위치 생성
   const generatePinPositions = (products) => {
     return products.map((product) => {
       const hub =
-        financialHubs.find((h) => h.name === product.region) ||
-        financialHubs[0];
+        financialHubs.find((h) =>
+          h.keywords.some(
+            (keyword) =>
+              product.name.toLowerCase().includes(keyword) ||
+              (product.type &&
+                product.type.toLowerCase().includes(keyword.toLowerCase())) || // Ensure product.type is defined
+              h.name === product.domain
+          )
+        ) || financialHubs[0]; // Default to the first hub if no match
+
       return {
         ...product,
         x: hub.x + (Math.random() - 0.5) * 15,
@@ -241,16 +340,17 @@ const FinPickPremiumMap = () => {
     });
   };
 
-  // 핀 드롭 애니메이션 (개선된)
+  // 핀 드롭 애니메이션
   const dropPins = (products) => {
     const positions = generatePinPositions(products);
+    setPins([]); // Clear existing pins before dropping new ones
 
     positions.forEach((product, index) => {
       setTimeout(() => {
         const newPin = {
           ...product,
           animation: "drop",
-          id: product.id + Date.now(), // 고유 ID 보장
+          id: product.id + Date.now() + index, // Ensure unique ID for animation
         };
 
         setPins((prevPins) => [...prevPins, newPin]);
@@ -277,11 +377,48 @@ const FinPickPremiumMap = () => {
             )
           );
         }, 700);
-      }, index * 500);
+      }, index * 500); // Staggered drop effect
     });
   };
 
-  // AI 응답 시뮬레이션 (개선된)
+  // 🔄 폴백 함수 (서버 미연결 시 더미 데이터 사용)
+  const handleFallbackRecommendation = async (query) => {
+    console.log("🔄 폴백 모드: 더미 데이터 사용");
+
+    const input = query.toLowerCase();
+    let selectedDomainName = "예금/적금";
+
+    for (const hub of financialHubs) {
+      if (hub.keywords.some((keyword) => input.includes(keyword))) {
+        selectedDomainName = hub.name;
+        break;
+      }
+    }
+
+    const products =
+      sampleProducts[selectedDomainName] || sampleProducts["예금/적금"];
+
+    setTimeout(() => {
+      setIsLoading(false);
+
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: `🎯 ${selectedDomainName} 영역에서 ${
+          products.length
+        }개의 상품을 발견했어요! ${!serverConnected ? "(데모 모드)" : ""} 📍`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      setTimeout(() => {
+        dropPins(products);
+      }, 1000);
+    }, 2500); // Simulate API delay
+  };
+
+  // 🤖 메인 API 연동 메시지 처리 함수
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -293,57 +430,120 @@ const FinPickPremiumMap = () => {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentQuery = inputValue;
     setInputValue("");
     setIsLoading(true);
     setLoadingProgress(0);
     setPins([]);
     setSelectedPin(null);
-    setShowChat(false);
+    setApiError(null);
+    setShowChat(false); // Hide chat when message is sent
 
-    // 키워드 분석
-    const input = inputValue.toLowerCase();
-    let products = [];
+    try {
+      if (serverConnected) {
+        // 🚀 실제 백엔드 API 호출
+        console.log("🤖 백엔드 AI 추천 요청...");
 
-    if (
-      input.includes("안전") ||
-      input.includes("저축") ||
-      input.includes("적금") ||
-      input.includes("예금")
-    ) {
-      products = sampleProducts["안전"];
-    } else if (
-      input.includes("투자") ||
-      input.includes("수익") ||
-      input.includes("펀드")
-    ) {
-      products = sampleProducts["투자"];
-    } else {
-      products = sampleProducts["안전"];
+        const response =
+          await SmartRecommendationService.getPersonalizedRecommendations(
+            currentQuery,
+            null // 나중에 사용자 프로필 추가
+          );
+
+        if (response.success) {
+          // API 응답에서 상품 데이터 추출
+          const products = response.data.products || [];
+
+          // 백엔드 데이터를 프론트엔드 형식으로 변환
+          const convertedProducts = products.map((product) => ({
+            id: product.product_id,
+            name: product.name,
+            type: mapProductType(product.type),
+            rate: product.interest_rate,
+            minAmount: Math.floor(product.minimum_amount / 10000),
+            suitability: Math.round(product.match_score),
+            reason: product.recommendation_reason,
+            monthlyAmount: estimateMonthlyAmount(product),
+            bank: product.bank,
+            domain: inferDomain(product.type),
+          }));
+
+          setIsLoading(false);
+
+          const aiMessage = {
+            id: Date.now() + 1,
+            type: "ai",
+            content: `🎯 AI 분석 결과: ${
+              convertedProducts.length
+            }개의 맞춤 상품을 발견했어요! (적합도 평균 ${Math.round(
+              response.data.summary?.average_match_score || 85
+            )}점) 📍`,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, aiMessage]);
+
+          setTimeout(() => {
+            dropPins(convertedProducts);
+          }, 1000);
+        } else {
+          throw new Error(response.error);
+        }
+      } else {
+        // 🔄 서버 연결 안됨 - 더미 데이터 사용
+        console.warn("⚠️ 서버 미연결 - 더미 데이터 사용");
+        await handleFallbackRecommendation(currentQuery);
+      }
+    } catch (error) {
+      console.error("❌ 추천 요청 실패:", error);
+      setApiError(ApiUtils.formatErrorMessage(error));
+
+      // 에러 시 폴백으로 더미 데이터 사용
+      await handleFallbackRecommendation(currentQuery);
     }
-
-    // 2.5초 후 응답
-    setTimeout(() => {
-      setIsLoading(false);
-
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: "ai",
-        content: `🎯 ${products.length}개의 맞춤 상품을 발견했어요! 지도에서 확인해보세요 📍`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-
-      // 1초 후 핀 드롭 시작
-      setTimeout(() => {
-        dropPins(products);
-      }, 1000);
-    }, 2500);
   };
 
-  // 핀 클릭 핸들러
-  const handlePinClick = (pin) => {
+  // 피드백 제출 함수
+  const handleProductFeedback = async (productId, rating) => {
+    try {
+      if (serverConnected) {
+        const response = await SmartRecommendationService.submitProductFeedback(
+          productId,
+          rating,
+          "사용자가 상품을 선택했습니다."
+        );
+
+        if (response.success) {
+          console.log("✅ 피드백 전송 성공");
+        }
+      }
+    } catch (error) {
+      console.error("❌ 피드백 전송 실패:", error);
+    }
+  };
+
+  // 핀 클릭 핸들러 (피드백 추가)
+  const handlePinClick = async (pin) => {
     setSelectedPin(selectedPin?.id === pin.id ? null : pin);
+
+    // 피드백 전송 (상품 선택 = 긍정적 피드백)
+    if (selectedPin?.id !== pin.id) {
+      await handleProductFeedback(pin.id, 4); // 5점 만점에 4점
+    }
+  };
+
+  // 🔄 연결 재시도 함수
+  const retryConnection = async () => {
+    setIsCheckingConnection(true);
+    setApiError(null);
+
+    const isConnected = await ApiUtils.checkServerConnection();
+    setServerConnected(isConnected);
+    setIsCheckingConnection(false);
+
+    if (isConnected) {
+      console.log("✅ 서버 재연결 성공");
+    }
   };
 
   // Enter 키 처리
@@ -353,6 +553,53 @@ const FinPickPremiumMap = () => {
       handleSendMessage();
     }
   };
+
+  // --- Sub-Components (Render Logic) ---
+  // 🌟 서버 상태 표시 컴포넌트
+  const ServerStatus = () => (
+    <div className="flex items-center space-x-2">
+      {isCheckingConnection ? (
+        <>
+          <RefreshCw className="w-3 h-3 text-yellow-400 animate-spin" />
+          <span className="text-xs text-yellow-400">연결 확인 중...</span>
+        </>
+      ) : (
+        <>
+          <div
+            className={`w-2 h-2 rounded-full animate-pulse ${
+              serverConnected ? "bg-emerald-400" : "bg-red-400"
+            }`}
+          ></div>
+          <span
+            className={`text-xs ${
+              serverConnected ? "text-emerald-400" : "text-red-400"
+            }`}
+          >
+            {serverConnected ? "AI 연결됨" : "데모 모드"}
+          </span>
+        </>
+      )}
+    </div>
+  );
+
+  // 🚨 에러 메시지 컴포넌트
+  const ErrorMessage = ({ error, onRetry }) => (
+    <div className="absolute top-20 left-6 right-6 bg-red-900/80 border border-red-500/50 text-white px-4 py-3 rounded-2xl backdrop-blur-xl z-40">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <AlertTriangle className="w-4 h-4 text-red-400" />
+          <span className="text-sm">API 오류: {error}</span>
+        </div>
+        <button
+          onClick={onRetry}
+          className="text-xs bg-red-600 hover:bg-red-500 px-3 py-1 rounded-lg transition-colors flex items-center space-x-1"
+        >
+          <RefreshCw className="w-3 h-3" />
+          <span>재시도</span>
+        </button>
+      </div>
+    </div>
+  );
 
   // 별자리 컴포넌트
   const Constellation = () => (
@@ -370,7 +617,6 @@ const FinPickPremiumMap = () => {
           }}
         />
       ))}
-      {/* 연결선들 */}
       <svg className="absolute inset-0 w-full h-full">
         {[...Array(8)].map((_, i) => (
           <line
@@ -407,7 +653,7 @@ const FinPickPremiumMap = () => {
     </div>
   );
 
-  // Pin 컴포넌트 (프리미엄 스타일)
+  // Pin 컴포넌트
   const Pin = ({ pin, isSelected, onClick }) => {
     const style = pinStyles[pin.type];
     const IconComponent = style.icon;
@@ -441,7 +687,7 @@ const FinPickPremiumMap = () => {
           <IconComponent className="w-8 h-8 sm:w-7 sm:h-7 text-white drop-shadow-lg" />
         </div>
 
-        {/* 적합도 배지 (그라데이션) */}
+        {/* 적합도 배지 */}
         <div
           className="absolute -top-3 -right-3 w-10 h-10 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg backdrop-blur-sm border border-white/30"
           style={{
@@ -452,7 +698,7 @@ const FinPickPremiumMap = () => {
           {pin.suitability}%
         </div>
 
-        {/* 펄스 애니메이션 (선택 시) */}
+        {/* 펄스 애니메이션 */}
         {isSelected && (
           <div
             className="absolute inset-0 rounded-full border-2 animate-ping"
@@ -466,41 +712,52 @@ const FinPickPremiumMap = () => {
     );
   };
 
-  // 지역 허브 컴포넌트
+  // 도메인 허브 컴포넌트
   const RegionalHub = ({ hub }) => (
     <div
       className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
       style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
     >
       <div
-        className={`rounded-full border-2 border-white/10 backdrop-blur-sm ${
+        className={`rounded-2xl border-2 border-white/10 backdrop-blur-sm ${
           hub.size === "large"
-            ? "w-24 h-24"
+            ? "w-32 h-24"
             : hub.size === "medium"
-            ? "w-18 h-18"
-            : "w-14 h-14"
+            ? "w-24 h-18"
+            : "w-18 h-14"
         }`}
         style={{
           backgroundColor: `${hub.color}15`,
           borderColor: `${hub.color}40`,
         }}
       >
-        <div className="w-full h-full flex flex-col items-center justify-center">
+        <div className="w-full h-full flex flex-col items-center justify-center p-2">
           <div
-            className="text-xs font-bold text-white/80"
+            className="text-sm font-bold text-white mb-1"
             style={{ color: hub.color }}
           >
             {hub.name}
           </div>
-          <div className="text-xs text-white/60">{hub.products}개</div>
+          <div className="text-xs text-white/60 text-center leading-tight">
+            {hub.description}
+          </div>
+          <div className="text-xs text-white/40 mt-1">
+            {hub.products}개 상품
+          </div>
         </div>
       </div>
     </div>
   );
 
+  // --- Main Return Statement (JSX) ---
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="w-full max-w-6xl mx-auto bg-gray-950 h-screen flex flex-col overflow-hidden relative">
+        {/* 🚨 에러 메시지 표시 */}
+        {apiError && (
+          <ErrorMessage error={apiError} onRetry={retryConnection} />
+        )}
+
         {/* 프리미엄 헤더 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-800/50 backdrop-blur-xl bg-gray-950/80 relative z-30">
           <div className="flex items-center space-x-4">
@@ -520,8 +777,9 @@ const FinPickPremiumMap = () => {
             </div>
           </div>
 
-          {/* 실시간 지표 */}
+          {/* 실시간 지표 + 서버 상태 */}
           <div className="hidden md:flex items-center space-x-6 text-sm">
+            <ServerStatus />
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
               <span className="text-emerald-400 font-semibold">
@@ -572,15 +830,16 @@ const FinPickPremiumMap = () => {
                 className="w-full h-full"
                 style={{
                   backgroundImage: `
-                    radial-gradient(circle at 75% 30%, rgba(16, 185, 129, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 65% 40%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 85% 85%, rgba(239, 68, 68, 0.2) 0%, transparent 50%)
+                    radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+                    radial-gradient(circle at 75% 25%, rgba(16, 185, 129, 0.3) 0%, transparent 50%),
+                    radial-gradient(circle at 25% 75%, rgba(245, 158, 11, 0.3) 0%, transparent 50%),
+                    radial-gradient(circle at 75% 75%, rgba(139, 92, 246, 0.2) 0%, transparent 50%)
                   `,
                 }}
               ></div>
             </div>
 
-            {/* 지역 허브들 */}
+            {/* 도메인 허브들 */}
             {financialHubs.map((hub, index) => (
               <RegionalHub key={index} hub={hub} />
             ))}
@@ -594,7 +853,7 @@ const FinPickPremiumMap = () => {
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full blur-xl opacity-30"></div>
                   </div>
                   <h3 className="text-white text-2xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    AI 금융 지도
+                    AI 금융 도메인 지도
                   </h3>
                   <p className="text-gray-300 text-center leading-relaxed mb-4">
                     우상단 채팅 버튼을 눌러
@@ -602,9 +861,11 @@ const FinPickPremiumMap = () => {
                     원하는 상품을 말해보세요
                   </p>
                   <p className="text-gray-500 text-sm">
-                    AI가 실시간으로 최적의
+                    {serverConnected
+                      ? "AI가 실시간으로 최적의"
+                      : "데모 모드로 샘플"}
                     <br />
-                    금융상품을 지도에 표시합니다
+                    금융상품을 도메인별로 표시합니다
                   </p>
                 </div>
               </div>
@@ -614,7 +875,6 @@ const FinPickPremiumMap = () => {
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center backdrop-blur-xl bg-black/40">
                 <div className="text-center backdrop-blur-xl bg-gray-900/80 rounded-3xl p-8 border border-gray-700/50">
-                  {/* 이중 회전 스피너 */}
                   <div className="relative w-20 h-20 mx-auto mb-6">
                     <div className="absolute inset-0 border-4 border-emerald-400/30 rounded-full"></div>
                     <div className="absolute inset-0 border-4 border-transparent border-t-emerald-400 rounded-full animate-spin"></div>
@@ -622,10 +882,11 @@ const FinPickPremiumMap = () => {
                   </div>
 
                   <h3 className="text-white text-xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    AI 분석 진행 중...
+                    {serverConnected
+                      ? "AI 분석 진행 중..."
+                      : "데모 분석 진행 중..."}
                   </h3>
 
-                  {/* 진행률 바 */}
                   <div className="w-48 h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
                     <div
                       className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300"
@@ -634,7 +895,15 @@ const FinPickPremiumMap = () => {
                   </div>
 
                   <p className="text-gray-300 text-sm">
-                    340+ 상품 중에서 최적 매칭 중
+                    {loadingProgress < 30
+                      ? serverConnected
+                        ? "AI 키워드 분석 중..."
+                        : "키워드 분석 중..."
+                      : loadingProgress < 60
+                      ? "도메인 매칭 중..."
+                      : loadingProgress < 90
+                      ? "상품 필터링 중..."
+                      : "결과 준비 중..."}
                   </p>
                 </div>
               </div>
@@ -661,6 +930,11 @@ const FinPickPremiumMap = () => {
                     {pins.length}개 발견
                   </span>
                   <Sparkles className="w-5 h-5 text-yellow-400" />
+                  {serverConnected && (
+                    <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded-lg">
+                      AI
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -697,14 +971,20 @@ const FinPickPremiumMap = () => {
             )}
           </div>
 
-          {/* 채팅 오버레이 (글래스모피즘) */}
+          {/* 채팅 오버레이 */}
           {showChat && (
             <div className="absolute inset-0 backdrop-blur-xl bg-black/50 z-20 flex flex-col">
               <div className="backdrop-blur-xl bg-gray-950/90 border-b border-gray-700/50 p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                    <h2 className="text-white font-bold text-lg">AI 상담사</h2>
+                    <div
+                      className={`w-2 h-2 rounded-full animate-pulse ${
+                        serverConnected ? "bg-emerald-400" : "bg-yellow-400"
+                      }`}
+                    ></div>
+                    <h2 className="text-white font-bold text-lg">
+                      {serverConnected ? "AI 상담사" : "AI 상담사 (데모)"}
+                    </h2>
                   </div>
                   <button
                     onClick={() => setShowChat(false)}
@@ -725,254 +1005,117 @@ const FinPickPremiumMap = () => {
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] p-4 rounded-2xl text-sm backdrop-blur-sm border ${
+                      className={`max-w-[70%] p-3 rounded-lg shadow-md ${
                         message.type === "user"
-                          ? "bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 border-transparent shadow-lg"
-                          : "bg-gray-800/50 text-white border-gray-700/30"
+                          ? "bg-emerald-600 text-white rounded-br-none"
+                          : "bg-gray-800 text-gray-200 rounded-bl-none"
                       }`}
                     >
-                      <p className="whitespace-pre-line leading-relaxed">
-                        {message.content}
-                      </p>
+                      <p className="text-sm break-words">{message.content}</p>
+                      <span className="text-xs text-white/60 mt-1 block text-right">
+                        {message.timestamp.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
                     </div>
                   </div>
                 ))}
-
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-800/50 text-white p-4 rounded-2xl backdrop-blur-sm border border-gray-700/30">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce"></div>
-                          <div
-                            className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce"
-                            style={{ animationDelay: "0.1s" }}
-                          ></div>
-                          <div
-                            className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce"
-                            style={{ animationDelay: "0.2s" }}
-                          ></div>
-                        </div>
-                        <span className="text-sm">AI 분석 중...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div ref={messagesEndRef} /> {/* For auto-scrolling */}
               </div>
 
-              {/* 프리미엄 채팅 입력창 */}
-              <div className="p-6 backdrop-blur-xl bg-gray-950/90 border-t border-gray-700/50">
-                <div className="flex items-end space-x-3">
-                  <div className="flex-1">
-                    <textarea
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder="원하는 금융상품을 자연어로 말씀해주세요..."
-                      className="w-full bg-gray-800/50 backdrop-blur-sm text-white rounded-2xl p-4 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 placeholder-gray-400 text-sm border border-gray-700/30 transition-all"
-                      rows="2"
-                      style={{ maxHeight: "100px" }}
-                    />
-                  </div>
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!inputValue.trim() || isLoading}
-                    className="relative group w-12 h-12 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center hover:shadow-lg hover:shadow-emerald-400/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Send className="w-5 h-5 text-gray-900" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-2xl blur-lg opacity-0 group-hover:opacity-30 transition-opacity"></div>
-                  </button>
-                </div>
+              {/* 채팅 입력 */}
+              <div className="p-4 border-t border-gray-700/50 backdrop-blur-xl bg-gray-950/90 flex items-center space-x-3">
+                <textarea
+                  className="flex-1 bg-gray-800 text-white rounded-lg p-3 resize-none focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-gray-500 text-sm custom-scrollbar"
+                  rows="1"
+                  placeholder={
+                    isLoading ? "AI 분석 중..." : "금융 상품을 검색해보세요..."
+                  }
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  disabled={isLoading}
+                ></textarea>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !inputValue.trim()}
+                  className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-6 h-6 text-white" />
+                </button>
               </div>
             </div>
           )}
-        </div>
 
-        {/* 프리미엄 상품 상세 카드 */}
-        {selectedPin && (
-          <div className="absolute bottom-0 left-0 right-0 backdrop-blur-xl bg-white/95 rounded-t-3xl shadow-2xl z-30 transform transition-all duration-500 border-t border-gray-200/50">
-            <div className="p-6">
-              {/* 드래그 핸들 */}
-              <div className="w-16 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
-
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="font-bold text-gray-900 text-xl">
-                      {selectedPin.name}
-                    </h3>
-                    <div
-                      className="px-3 py-1 rounded-full text-xs font-semibold text-white"
-                      style={{
-                        backgroundColor: pinStyles[selectedPin.type].color,
-                      }}
-                    >
-                      {pinStyles[selectedPin.type].name}
-                    </div>
-                  </div>
-                  <p className="text-gray-600 flex items-center space-x-2">
-                    <Building className="w-4 h-4" />
-                    <span>{selectedPin.bank}</span>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-emerald-600 font-medium">
-                      {selectedPin.region}
-                    </span>
+          {/* 선택된 핀 상세 정보 */}
+          {selectedPin && (
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-xl bg-gray-900/80 border border-gray-700/50 rounded-3xl p-6 shadow-2xl z-50 animate-fade-in-up w-full max-w-sm">
+              <button
+                onClick={() => setSelectedPin(null)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center space-x-4 mb-4">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                  style={{
+                    backgroundColor: pinStyles[selectedPin.type]?.color,
+                  }}
+                >
+                  {React.createElement(pinStyles[selectedPin.type]?.icon, {
+                    className: "w-6 h-6 text-white",
+                  })}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white mb-0.5">
+                    {selectedPin.name}
+                  </h3>
+                  <p className="text-sm text-gray-400">{selectedPin.bank}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <p className="text-gray-400">유형</p>
+                  <p className="text-white font-medium">
+                    {pinStyles[selectedPin.type]?.name}
                   </p>
                 </div>
-                <div className="text-right ml-6">
-                  <div
-                    className="text-3xl font-bold mb-1"
-                    style={{ color: pinStyles[selectedPin.type].color }}
-                  >
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <p className="text-gray-400">금리/수익률</p>
+                  <p className="text-emerald-400 font-medium">
                     {selectedPin.rate}%
-                  </div>
-                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    연 수익률
-                  </div>
+                  </p>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200/50">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <PiggyBank className="w-4 h-4 text-gray-600" />
-                    <div className="text-xs text-gray-600 font-medium">
-                      최소 금액
-                    </div>
-                  </div>
-                  <div className="font-bold text-gray-900 text-lg">
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <p className="text-gray-400">최소 금액</p>
+                  <p className="text-white font-medium">
                     {selectedPin.minAmount}만원
-                  </div>
+                  </p>
                 </div>
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200/50">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <BarChart3 className="w-4 h-4 text-gray-600" />
-                    <div className="text-xs text-gray-600 font-medium">
-                      월 납입
-                    </div>
-                  </div>
-                  <div className="font-bold text-gray-900 text-lg">
-                    {selectedPin.monthlyAmount}만원
-                  </div>
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <p className="text-gray-400">적합도</p>
+                  <p className="text-yellow-400 font-medium">
+                    {selectedPin.suitability}%
+                  </p>
                 </div>
+                {selectedPin.monthlyAmount > 0 && (
+                  <div className="bg-gray-800 p-3 rounded-lg col-span-2">
+                    <p className="text-gray-400">월 예상 납입액</p>
+                    <p className="text-white font-medium">
+                      {selectedPin.monthlyAmount}만원
+                    </p>
+                  </div>
+                )}
               </div>
-
-              <div className="bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-2xl p-6 mb-6 border border-emerald-200/50">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-5 h-5 text-emerald-600" />
-                    <span className="text-sm font-bold text-gray-700">
-                      적합도 분석
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{
-                        backgroundColor: pinStyles[selectedPin.type].color,
-                      }}
-                    ></div>
-                    <span
-                      className="font-bold text-2xl"
-                      style={{ color: pinStyles[selectedPin.type].color }}
-                    >
-                      {selectedPin.suitability}%
-                    </span>
-                  </div>
-                </div>
-                <div className="text-sm text-gray-700 leading-relaxed">
-                  {selectedPin.reason}
-                </div>
-
-                {/* 적합도 프로그레스 바 */}
-                <div className="mt-4 w-full h-2 bg-white/50 rounded-full overflow-hidden">
-                  <div
-                    className="h-full transition-all duration-1000 rounded-full"
-                    style={{
-                      width: `${selectedPin.suitability}%`,
-                      background: `linear-gradient(90deg, ${
-                        pinStyles[selectedPin.type].color
-                      }, ${pinStyles[selectedPin.type].color}cc)`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="flex space-x-3">
-                <button
-                  className="flex-1 py-4 rounded-2xl font-semibold text-white transition-all hover:shadow-lg transform hover:scale-105"
-                  style={{
-                    background: `linear-gradient(135deg, ${
-                      pinStyles[selectedPin.type].color
-                    }, ${pinStyles[selectedPin.type].color}cc)`,
-                    boxShadow: `0 10px 25px ${
-                      pinStyles[selectedPin.type].color
-                    }40`,
-                  }}
-                >
-                  <div className="flex items-center justify-center space-x-2">
-                    <span>자세히 보기</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </button>
-                <button
-                  onClick={() => setSelectedPin(null)}
-                  className="px-8 py-4 bg-gray-100 hover:bg-gray-200 rounded-2xl font-semibold text-gray-700 transition-all transform hover:scale-105 border border-gray-200"
-                >
-                  닫기
-                </button>
-              </div>
+              <p className="text-gray-300 text-sm leading-relaxed border-t border-gray-700/50 pt-4">
+                <span className="font-semibold text-white">추천 사유: </span>
+                {selectedPin.reason}
+              </p>
             </div>
-          </div>
-        )}
-
-        {/* 프리미엄 빠른 질문 버튼들 */}
-        {pins.length === 0 && !isLoading && !showChat && (
-          <div className="absolute bottom-6 left-6 right-6">
-            <div className="backdrop-blur-xl bg-black/40 border border-gray-700/30 rounded-3xl p-6">
-              <div className="flex items-center justify-center space-x-2 mb-4">
-                <Zap className="w-5 h-5 text-yellow-400" />
-                <p className="text-white font-semibold">빠른 상담 시작</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    setInputValue("월 50만원씩 안전하게 저축하고 싶어요");
-                    setTimeout(handleSendMessage, 100);
-                  }}
-                  className="p-4 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/30 hover:to-cyan-500/30 rounded-2xl text-white text-sm text-left transition-all duration-300 border border-emerald-500/20 hover:border-emerald-500/40 backdrop-blur-sm"
-                >
-                  <div className="flex items-center space-x-3">
-                    <Shield className="w-6 h-6 text-emerald-400" />
-                    <div>
-                      <div className="font-semibold">안전한 저축</div>
-                      <div className="text-xs text-gray-300">
-                        월 50만원 정기적금
-                      </div>
-                    </div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setInputValue("투자로 수익을 내고 싶어요");
-                    setTimeout(handleSendMessage, 100);
-                  }}
-                  className="p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 rounded-2xl text-white text-sm text-left transition-all duration-300 border border-purple-500/20 hover:border-purple-500/40 backdrop-blur-sm"
-                >
-                  <div className="flex items-center space-x-3">
-                    <TrendingUp className="w-6 h-6 text-purple-400" />
-                    <div>
-                      <div className="font-semibold">투자 수익</div>
-                      <div className="text-xs text-gray-300">
-                        펀드 & ETF 추천
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
