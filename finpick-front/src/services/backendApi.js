@@ -1,109 +1,87 @@
 // finpick-front/src/services/backendApi.js
 
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
-// API 응답 래퍼 클래스
-class ApiResponse {
-  constructor(success, data, error = null) {
-    this.success = success;
-    this.data = data;
-    this.error = error;
-  }
-}
-
-// HTTP 요청 헬퍼 함수
+// 🔧 공통 API 요청 함수
 const makeRequest = async (url, options = {}) => {
+  const token = localStorage.getItem("authToken");
+
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+    },
+  };
+
   try {
-    // 기본 헤더 설정
-    const defaultHeaders = {
-      "Content-Type": "application/json",
-    };
-
-    // 인증 토큰이 있으면 추가
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      defaultHeaders["Authorization"] = `Bearer ${token}`;
-      console.log(`🔑 토큰 사용: ${token.substring(0, 20)}...`);
-    } else {
-      console.warn("⚠️ 토큰이 없습니다. 로그인이 필요할 수 있습니다.");
-    }
-
-    const config = {
-      headers: defaultHeaders,
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
-    };
-
-    console.log(`🔗 API 요청: ${url}`, config);
-
     const response = await fetch(url, config);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem("authToken");
+        throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
+      }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    console.log(`✅ API 응답: ${url}`, data);
-
-    return new ApiResponse(true, data);
+    return await response.json();
   } catch (error) {
-    console.error(`❌ API 오류: ${url}`, error);
-    return new ApiResponse(false, null, error.message);
+    console.error("API 요청 실패:", error);
+    throw error;
   }
 };
 
-// 🔧 토큰 검증 유틸리티 함수
-export const verifyAuthToken = async () => {
-  try {
+// 🎯 금융모델 추천 API (새로운 메인 API)
+export const FinancialModelAPI = {
+  // 🚀 자연어 기반 금융모델 추천 (메인 기능)
+  getFinancialModelRecommendation: async (
+    query,
+    userProfile = null,
+    options = {}
+  ) => {
     const token = localStorage.getItem("authToken");
     if (!token) {
-      console.error("❌ 토큰이 없습니다.");
-      return false;
-    }
-
-    const response = await AuthAPI.verifyToken();
-    return response.success;
-  } catch (error) {
-    console.error("❌ 토큰 검증 실패:", error);
-    return false;
-  }
-};
-
-// 🤖 추천 관련 API
-export const RecommendationAPI = {
-  // 사용자 프로필 분석
-  analyzeProfile: async (profileData) => {
-    return await makeRequest(
-      `${API_BASE_URL}/recommendations/analyze-profile`,
-      {
-        method: "POST",
-        body: JSON.stringify(profileData),
-      }
-    );
-  },
-
-  // 맞춤 상품 추천 생성
-  generateRecommendations: async (requestData) => {
-    return await makeRequest(`${API_BASE_URL}/recommendations/generate`, {
-      method: "POST",
-      body: JSON.stringify(requestData),
-    });
-  },
-
-  // 자연어 입력 처리 - 🔥 원래 엔드포인트로 복원
-  processNaturalLanguage: async (query) => {
-    // 토큰 확인
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      console.error("❌ 토큰이 없습니다. 로그인이 필요합니다.");
+      console.error("토큰이 없습니다. 로그인이 필요합니다.");
       throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
     }
 
+    const requestData = {
+      query: query.trim(),
+      user_profile: userProfile,
+      filters: options.filters || {},
+      limit: options.limit || 5,
+    };
+
+    console.log("🎯 금융모델 추천 요청:", requestData);
+
+    try {
+      const response = await makeRequest(
+        `${API_BASE_URL}/recommendations/natural-language`,
+        {
+          method: "POST",
+          body: JSON.stringify(requestData),
+        }
+      );
+
+      console.log("✅ 금융모델 추천 응답:", response);
+      return response;
+    } catch (error) {
+      console.error("❌ 금융모델 추천 실패:", error);
+      throw error;
+    }
+  },
+
+  // 🧪 도메인 분류 테스트
+  testDomainClassification: async (query) => {
     return await makeRequest(
-      `${API_BASE_URL}/recommendations/natural-language`,
+      `${API_BASE_URL}/recommendations/test/domain-classification`,
       {
         method: "POST",
         body: JSON.stringify({ query }),
@@ -111,14 +89,27 @@ export const RecommendationAPI = {
     );
   },
 
-  // 🔧 테스트용 엔드포인트 (백업용으로 유지)
-  processNaturalLanguageTest: async (query) => {
+  // 🧪 데이터셋 준비 테스트
+  testDatasetPreparation: async (domain) => {
     return await makeRequest(
-      `${API_BASE_URL}/recommendations/test/natural-language`,
+      `${API_BASE_URL}/recommendations/test/dataset-preparation`,
       {
         method: "POST",
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ domain }),
       }
+    );
+  },
+};
+
+// 🏦 기존 추천 API (호환성 유지)
+export const RecommendationAPI = {
+  // 🔄 자연어 처리 (새로운 금융모델 API로 리다이렉트)
+  processNaturalLanguage: async (query, userProfile = null, options = {}) => {
+    console.log("⚠️ 기존 API 호출됨, 새로운 금융모델 API로 리다이렉트");
+    return await FinancialModelAPI.getFinancialModelRecommendation(
+      query,
+      userProfile,
+      options
     );
   },
 
@@ -147,9 +138,9 @@ export const RecommendationAPI = {
   },
 };
 
-// 🏦 상품 관련 API (향후 확장용)
+// 🏦 상품 관련 API
 export const ProductAPI = {
-  // 전체 상품 조회 (향후 구현)
+  // 전체 상품 조회
   getAllProducts: async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
     return await makeRequest(`${API_BASE_URL}/products?${params}`);
@@ -192,72 +183,167 @@ export const HealthAPI = {
   },
 };
 
-// 🎯 고수준 추천 서비스 클래스 - 🔥 원래 코드로 복원
+// 🎯 고수준 추천 서비스 클래스 - 완전 개편
 export class SmartRecommendationService {
-  static async getPersonalizedRecommendations(userQuery, userProfile = null) {
+  // 🚀 메인 기능: 금융모델 기반 개인화 추천
+  static async getPersonalizedRecommendations(
+    userQuery,
+    userProfile = null,
+    options = {}
+  ) {
     try {
-      console.log("🎯 개인화 추천 요청 시작...");
+      console.log("🎯 금융모델 기반 추천 요청 시작...");
 
-      // 🔥 토큰 확인 로직
+      // 토큰 확인
       const token = localStorage.getItem("authToken");
       if (!token) {
         throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
       }
 
-      // 1단계: 자연어 처리
-      console.log("1️⃣ 자연어 분석 중...");
-      const nlpResult = await RecommendationAPI.processNaturalLanguage(
-        userQuery
+      // 새로운 금융모델 API 호출
+      const result = await FinancialModelAPI.getFinancialModelRecommendation(
+        userQuery,
+        userProfile,
+        options
       );
 
-      if (!nlpResult.success) {
-        throw new Error("자연어 처리 실패: " + nlpResult.error);
+      if (
+        result.success &&
+        result.recommendation_type === "financial_model_based"
+      ) {
+        console.log("✅ 금융모델 추천 성공:", result);
+
+        return {
+          success: true,
+          type: "financial_model",
+          data: {
+            // 🎯 핵심: 금융모델 정보
+            financialModel: {
+              name: result.financial_model?.model_name,
+              type: result.financial_model?.model_type,
+              strategy: result.financial_model?.strategy,
+              expectedOutcomes: result.financial_model?.expected_outcomes,
+              implementationSteps: result.financial_model?.implementation_steps,
+              confidence: result.financial_model?.confidence,
+            },
+
+            // 🏦 추천 상품들
+            recommendations: result.recommendations || [],
+
+            // 📊 포트폴리오 분석
+            portfolioAnalysis: result.portfolio_analysis || {},
+
+            // 🤖 AI 인사이트
+            ai_insights: {
+              method: result.ai_insights?.method || "Gemini AI 금융모델 분석",
+              domainSpecialized: result.ai_insights?.domain_specialized || true,
+              modelBased: result.ai_insights?.model_based || true,
+              confidence_score: result.ai_insights?.confidence_score || 0.8,
+              userAnalysis: result.ai_insights?.user_analysis || {},
+              financialStrategy: result.ai_insights?.financial_strategy || {},
+              expectedOutcomes: result.ai_insights?.expected_outcomes || {},
+              recommendationSummary:
+                result.ai_insights?.recommendation_summary || "",
+            },
+
+            // 📋 실행 계획
+            nextSteps: result.next_steps || [],
+
+            // 📈 메타데이터
+            metadata: {
+              userQuery: result.user_query,
+              classifiedDomain: result.classified_domain,
+              datasetSize: result.metadata?.dataset_size || 0,
+              modelConfidence: result.metadata?.model_confidence || 3,
+              timestamp: result.metadata?.timestamp,
+              apiVersion: result.metadata?.api_version,
+            },
+          },
+        };
+      } else {
+        console.warn("⚠️ 예상과 다른 응답 형식:", result);
+        return {
+          success: true,
+          type: "fallback",
+          data: {
+            recommendations: result.recommendations || [],
+            ai_insights: result.ai_insights || {},
+          },
+        };
       }
-
-      // 2단계: 추천 생성 요청 구성
-      const recommendationRequest = {
-        natural_query: userQuery,
-        user_profile: userProfile,
-        filters: nlpResult.data.parsed_conditions || {},
-        limit: 5,
-      };
-
-      // 3단계: 추천 생성
-      console.log("2️⃣ 맞춤 추천 생성 중...");
-      const recommendations = await RecommendationAPI.generateRecommendations(
-        recommendationRequest
-      );
-
-      if (!recommendations.success) {
-        throw new Error("추천 생성 실패: " + recommendations.error);
-      }
-
-      console.log("✅ 개인화 추천 완료!", recommendations.data);
-      return recommendations;
     } catch (error) {
-      console.error("❌ 개인화 추천 오류:", error);
-      return new ApiResponse(false, null, error.message);
+      console.error("❌ 금융모델 추천 실패:", error);
+
+      // 사용자 친화적 에러 메시지
+      const userFriendlyMessage = ApiUtils.formatErrorMessage(error);
+
+      return {
+        success: false,
+        error: userFriendlyMessage,
+        originalError: error.message,
+        type: "error",
+      };
     }
   }
 
+  // 피드백 제출
   static async submitProductFeedback(productId, rating, comment = null) {
     try {
       return await RecommendationAPI.submitFeedback(productId, rating, comment);
     } catch (error) {
       console.error("❌ 피드백 제출 오류:", error);
-      return new ApiResponse(false, null, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // 🧪 개발/테스트용 기능들
+  static async testDomainClassification(query) {
+    try {
+      return await FinancialModelAPI.testDomainClassification(query);
+    } catch (error) {
+      console.error("도메인 분류 테스트 실패:", error);
+      return { error: error.message };
+    }
+  }
+
+  static async testDatasetPreparation(domain) {
+    try {
+      return await FinancialModelAPI.testDatasetPreparation(domain);
+    } catch (error) {
+      console.error("데이터셋 준비 테스트 실패:", error);
+      return { error: error.message };
+    }
+  }
+
+  // 📊 사용자 인사이트 관련
+  static async getUserInsights() {
+    try {
+      return await RecommendationAPI.getUserInsights();
+    } catch (error) {
+      console.error("사용자 인사이트 조회 실패:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  static async getRecommendationHistory(limit = 10) {
+    try {
+      return await RecommendationAPI.getRecommendationHistory(limit);
+    } catch (error) {
+      console.error("추천 이력 조회 실패:", error);
+      return { success: false, error: error.message };
     }
   }
 }
 
-// 🔧 유틸리티 함수들
+// 🔧 유틸리티 함수들 - ApiUtils export 추가!
 export const ApiUtils = {
   // 서버 연결 상태 확인
   checkServerConnection: async () => {
     try {
       const response = await HealthAPI.healthCheck();
-      return response.success;
+      return response && response.success !== false;
     } catch (error) {
+      console.warn("서버 연결 확인 실패:", error);
       return false;
     }
   },
@@ -279,15 +365,30 @@ export const ApiUtils = {
   simulateLoading: (ms = 2000) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   },
+
+  // 토큰 새로고침
+  refreshAuthToken: async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) return false;
+
+      const response = await AuthAPI.verifyToken(token);
+      return response.success;
+    } catch (error) {
+      console.error("토큰 검증 실패:", error);
+      localStorage.removeItem("authToken");
+      return false;
+    }
+  },
 };
 
-// 기본 내보내기
+// 🔗 레거시 호환성을 위한 기본 export
 export default {
+  FinancialModelAPI,
   RecommendationAPI,
   ProductAPI,
   AuthAPI,
   HealthAPI,
   SmartRecommendationService,
   ApiUtils,
-  verifyAuthToken,
 };
