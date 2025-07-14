@@ -53,6 +53,13 @@ const FinPickPremiumMap = () => {
   const mapRef = useRef(null);
   const messagesEndRef = useRef(null); // Ref for auto-scrolling chat
 
+  // 🔗 추가 상태 변수
+  const [userProfile, setUserProfile] = useState(null);
+  const [userInsights, setUserInsights] = useState({});
+  const [personalizationLevel, setPersonalizationLevel] = useState("none");
+  const [recommendationReasoning, setRecommendationReasoning] = useState("");
+  const [dataSourceInfo, setDataSourceInfo] = useState(null);
+
   // --- useEffect Hooks ---
   // 🔗 서버 연결 상태 확인
   useEffect(() => {
@@ -107,6 +114,24 @@ const FinPickPremiumMap = () => {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // 🔥 추가: 사용자 프로필 로딩
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      try {
+        // user prop이 없으므로, 항상 로딩 시도 (혹은 필요에 따라 조건 추가)
+        console.log("👤 사용자 프로필 로딩 시작");
+        const profile =
+          await SmartRecommendationService.getComprehensiveUserProfile();
+        setUserProfile(profile);
+        setDataSourceInfo(profile?.dataSource);
+        console.log("✅ 사용자 프로필 로딩 완료:", profile);
+      } catch (error) {
+        console.error("❌ 사용자 프로필 로딩 실패:", error);
+      }
+    };
+    loadUserProfile();
+  }, []); // user prop이 없으므로 빈 배열로 설정, 필요 시 user state 추가
 
   // --- Constant Data ---
   // 🎯 금융 도메인별 허브 데이터 - 2개 도메인으로 단순화
@@ -476,6 +501,10 @@ const FinPickPremiumMap = () => {
           monthlyAmount: estimateMonthlyAmount(product),
           bank: product.provider_name || "은행명 미제공",
           domain: inferDomain(product.product_type || "savings"),
+          // 🔥 추가: AI 분석 및 사용자 특정 정보 포함
+          aiAnalysis: product.ai_analysis,
+          userSpecific: product.user_specific,
+          originalProduct: product,
         };
       } catch (error) {
         console.error("❌ 상품 변환 오류:", error, product);
@@ -495,7 +524,7 @@ const FinPickPremiumMap = () => {
     });
   };
 
-  // 🤖 메인 API 연동 메시지 처리 함수 - 🔥 오류 처리 강화
+  // 🤖 메인 API 연동 메시지 처리 함수 - 🔥 오류 처리 강화 (handleSearch와 동일한 역할)
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -516,6 +545,11 @@ const FinPickPremiumMap = () => {
     setApiError(null);
     setShowChat(false);
 
+    // 🔥 추가: 개인화 정보 초기화
+    setPersonalizationLevel("none");
+    setUserInsights({});
+    setRecommendationReasoning("");
+
     try {
       if (serverConnected) {
         console.log("🤖 백엔드 AI 추천 요청...");
@@ -523,13 +557,17 @@ const FinPickPremiumMap = () => {
         const response =
           await SmartRecommendationService.getPersonalizedRecommendations(
             currentQuery,
-            null
+            null // userProfile 정보는 서비스 내부에서 처리한다고 가정
           );
 
         if (response.success) {
           // 🔥 안전한 데이터 추출 및 변환
           // 백엔드 응답의 recommendations 필드 사용
-          const products = response.data?.recommendations || [];
+          // 567번째 줄 근처
+          const products =
+            response.data?.data?.recommendations ||
+            response.data?.recommendations ||
+            [];
           console.log("📦 받은 상품 데이터:", products);
 
           // 🔥 안전한 변환 함수 사용
@@ -554,6 +592,11 @@ const FinPickPremiumMap = () => {
           setTimeout(() => {
             dropPins(convertedProducts);
           }, 1000);
+
+          // 🔥 추가: 개인화 정보 설정
+          setPersonalizationLevel(response.personalization_level || "none");
+          setUserInsights(response.user_insights || {});
+          setRecommendationReasoning(response.recommendation_reasoning || "");
         } else {
           throw new Error(response.error);
         }
@@ -580,7 +623,6 @@ const FinPickPremiumMap = () => {
           rating,
           "사용자가 상품을 선택했습니다."
         );
-
         if (response.success) {
           console.log("✅ 피드백 전송 성공");
         }
@@ -593,7 +635,6 @@ const FinPickPremiumMap = () => {
   // 핀 클릭 핸들러 (피드백 추가)
   const handlePinClick = async (pin) => {
     setSelectedPin(selectedPin?.id === pin.id ? null : pin);
-
     // 피드백 전송 (상품 선택 = 긍정적 피드백)
     if (selectedPin?.id !== pin.id) {
       await handleProductFeedback(pin.id, 4); // 5점 만점에 4점
@@ -604,11 +645,9 @@ const FinPickPremiumMap = () => {
   const retryConnection = async () => {
     setIsCheckingConnection(true);
     setApiError(null);
-
     const isConnected = await ApiUtils.checkServerConnection();
     setServerConnected(isConnected);
     setIsCheckingConnection(false);
-
     if (isConnected) {
       console.log("✅ 서버 재연결 성공");
     }
@@ -643,7 +682,8 @@ const FinPickPremiumMap = () => {
               serverConnected ? "text-emerald-400" : "text-red-400"
             }`}
           >
-            {serverConnected ? "AI 연결됨" : "데모 모드"}
+            {" "}
+            {serverConnected ? "AI 연결됨" : "데모 모드"}{" "}
           </span>
         </>
       )}
@@ -721,11 +761,29 @@ const FinPickPremiumMap = () => {
     </div>
   );
 
+  // 🔥 PersonalizationBadge 컴포넌트 추가
+  const PersonalizationBadge = ({ level }) => {
+    const badges = {
+      none: { text: "일반 추천", color: "bg-gray-600", icon: "🔍" },
+      basic: { text: "기본 맞춤", color: "bg-blue-600", icon: "👤" },
+      low: { text: "부분 맞춤", color: "bg-green-600", icon: "🎯" },
+      medium: { text: "개인화 추천", color: "bg-purple-600", icon: "🧠" },
+      high: { text: "고도 개인화", color: "bg-yellow-600", icon: "⭐" },
+    };
+    const badge = badges[level] || badges["basic"];
+    return (
+      <div
+        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium text-white ${badge.color}`}
+      >
+        <span className="mr-1">{badge.icon}</span> {badge.text}
+      </div>
+    );
+  };
+
   // Pin 컴포넌트
   const Pin = ({ pin, isSelected, onClick }) => {
     const style = pinStyles[pin.type];
     const IconComponent = style.icon;
-
     return (
       <div
         className={`absolute cursor-pointer transform -translate-x-1/2 -translate-y-full transition-all duration-500 ${
@@ -743,7 +801,6 @@ const FinPickPremiumMap = () => {
             transform: "scale(1.5)",
           }}
         />
-
         {/* 메인 핀 */}
         <div
           className="relative w-16 h-16 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-2xl border-3 border-white/20 backdrop-blur-sm"
@@ -754,433 +811,340 @@ const FinPickPremiumMap = () => {
         >
           <IconComponent className="w-8 h-8 sm:w-7 sm:h-7 text-white drop-shadow-lg" />
         </div>
-
         {/* 적합도 배지 */}
-        <div
-          className="absolute -top-3 -right-3 w-10 h-10 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg backdrop-blur-sm border border-white/30"
-          style={{
-            background: `linear-gradient(135deg, ${style.color}, ${style.color}cc)`,
-            boxShadow: `0 4px 15px ${style.color}40`,
-          }}
-        >
+        <div className="absolute -top-3 -right-3 w-10 h-10 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white text-xs font-bold shadow-lg border border-purple-400">
           {pin.suitability}%
         </div>
-
-        {/* 펄스 애니메이션 */}
-        {isSelected && (
-          <div
-            className="absolute inset-0 rounded-full border-2 animate-ping"
-            style={{
-              borderColor: style.color,
-              transform: "scale(1.5)",
-            }}
-          />
-        )}
       </div>
     );
   };
 
-  // 도메인 허브 컴포넌트
-  const RegionalHub = ({ hub }) => (
-    <div
-      className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-      style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
-    >
-      <div
-        className={`rounded-2xl border-2 border-white/10 backdrop-blur-sm ${
-          hub.size === "large"
-            ? "w-32 h-24"
-            : hub.size === "medium"
-            ? "w-24 h-18"
-            : "w-18 h-14"
-        }`}
-        style={{
-          backgroundColor: `${hub.color}15`,
-          borderColor: `${hub.color}40`,
-        }}
-      >
-        <div className="w-full h-full flex flex-col items-center justify-center p-2">
-          <div
-            className="text-sm font-bold text-white mb-1"
-            style={{ color: hub.color }}
-          >
-            {hub.name}
-          </div>
-          <div className="text-xs text-white/60 text-center leading-tight">
-            {hub.description}
-          </div>
-          <div className="text-xs text-white/40 mt-1">
-            {hub.products}개 상품
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // --- Main Return Statement (JSX) ---
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="w-full max-w-6xl mx-auto bg-gray-950 h-screen flex flex-col overflow-hidden relative">
-        {/* 🚨 에러 메시지 표시 */}
-        {apiError && (
-          <ErrorMessage error={apiError} onRetry={retryConnection} />
-        )}
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white relative font-sans overflow-hidden">
+      <Constellation />
+      <DataStreams />
 
-        {/* 프리미엄 헤더 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-800/50 backdrop-blur-xl bg-gray-950/80 relative z-30">
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-gray-900 font-bold text-lg">₩</span>
-              </div>
-              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl blur opacity-30"></div>
-            </div>
-            <div>
-              <h1 className="text-white font-bold text-xl bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                FinPick AI
-              </h1>
-              <p className="text-gray-400 text-sm">
-                Premium Financial Intelligence
-              </p>
-            </div>
-          </div>
-
-          {/* 실시간 지표 + 서버 상태 */}
-          <div className="hidden md:flex items-center space-x-6 text-sm">
-            <ServerStatus />
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-              <span className="text-emerald-400 font-semibold">
-                {liveData.totalProducts}+
-              </span>
-              <span className="text-gray-400">상품</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Building className="w-4 h-4 text-cyan-400" />
-              <span className="text-cyan-400 font-semibold">
-                {liveData.institutions}+
-              </span>
-              <span className="text-gray-400">기관</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-yellow-400" />
-              <span className="text-yellow-400 font-semibold">LIVE</span>
-            </div>
-          </div>
-
+      {/* Header */}
+      <header className="relative z-10 p-6 flex items-center justify-between border-b border-gray-800 backdrop-blur-md">
+        <div className="flex items-center space-x-4">
+          <Sparkles className="w-6 h-6 text-purple-400" />
+          <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-fuchsia-600 text-transparent bg-clip-text">
+            FinPick AI
+          </h1>
+          <ServerStatus />
+        </div>
+        <div className="flex items-center space-x-4">
+          <PersonalizationBadge level={personalizationLevel} />
           <button
             onClick={() => setShowChat(!showChat)}
-            className="relative group"
+            className="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition-colors"
+            title="Toggle Chat"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-gray-800 to-gray-700 rounded-xl flex items-center justify-center hover:from-gray-700 hover:to-gray-600 transition-all duration-300 shadow-lg border border-gray-600/50">
-              {showChat ? (
-                <X className="w-6 h-6 text-white" />
-              ) : (
-                <MessageCircle className="w-6 h-6 text-emerald-400" />
-              )}
-            </div>
-            {!showChat && (
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-            )}
+            <MessageCircle className="w-5 h-5 text-gray-300" />
           </button>
         </div>
+      </header>
 
-        {/* 메인 지도 영역 */}
-        <div className="flex-1 relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-slate-900 to-gray-950 overflow-hidden">
-            {/* 배경 효과들 */}
-            <Constellation />
-            <DataStreams />
+      {/* Main Content - Map and Chat */}
+      <main className="relative flex flex-col md:flex-row flex-1 overflow-hidden">
+        {/* Map Section */}
+        <section
+          ref={mapRef}
+          className="relative flex-1 bg-gray-900/50 flex items-center justify-center overflow-hidden"
+        >
+          {apiError && (
+            <ErrorMessage error={apiError} onRetry={retryConnection} />
+          )}
 
-            {/* 히트맵 그리드 */}
-            <div className="absolute inset-0 opacity-20">
-              <div
-                className="w-full h-full"
-                style={{
-                  backgroundImage: `
-                    radial-gradient(circle at 35% 40%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 65% 40%, rgba(245, 158, 11, 0.3) 0%, transparent 50%)
-                  `,
-                }}
-              ></div>
+          {/* Live Data Dashboard */}
+          <div className="absolute top-6 left-6 z-10 bg-gray-800/70 backdrop-blur-xl rounded-xl p-4 shadow-xl border border-gray-700">
+            <h3 className="text-lg font-semibold text-purple-300 mb-3">
+              실시간 금융 시장 지표
+            </h3>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div className="flex items-center space-x-2">
+                <Building className="w-4 h-4 text-cyan-400" />
+                <span>총 금융상품:</span>
+                <span className="font-bold text-emerald-400">
+                  {liveData.totalProducts.toLocaleString()}개
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-fuchsia-400" />
+                <span>참여 기관:</span>
+                <span className="font-bold text-orange-400">
+                  {liveData.institutions}개
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 col-span-2">
+                <RefreshCw className="w-4 h-4 text-yellow-400" />
+                <span>데이터 업데이트:</span>
+                <span className="font-bold text-purple-400">
+                  {liveData.realTimeUpdates}
+                </span>
+              </div>
             </div>
-
-            {/* 도메인 허브들 */}
-            {financialHubs.map((hub, index) => (
-              <RegionalHub key={index} hub={hub} />
-            ))}
-
-            {/* 중앙 안내 메시지 */}
-            {pins.length === 0 && !isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center p-6">
-                <div className="text-center backdrop-blur-xl bg-black/20 rounded-3xl p-8 border border-white/10">
-                  <div className="w-20 h-20 bg-gradient-to-br from-emerald-400/20 to-cyan-400/20 rounded-full flex items-center justify-center mb-6 mx-auto relative">
-                    <MapPin className="w-10 h-10 text-emerald-400" />
-                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full blur-xl opacity-30"></div>
-                  </div>
-                  <h3 className="text-white text-2xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    AI 금융 도메인 지도
-                  </h3>
-                  <p className="text-gray-300 text-center leading-relaxed mb-4">
-                    우상단 채팅 버튼을 눌러
-                    <br />
-                    원하는 상품을 말해보세요
-                  </p>
-                  <p className="text-gray-500 text-sm">
-                    {serverConnected
-                      ? "AI가 실시간으로 최적의"
-                      : "데모 모드로 샘플"}
-                    <br />
-                    금융상품을 도메인별로 표시합니다
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* 프리미엄 로딩 상태 */}
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center backdrop-blur-xl bg-black/40">
-                <div className="text-center backdrop-blur-xl bg-gray-900/80 rounded-3xl p-8 border border-gray-700/50">
-                  <div className="relative w-20 h-20 mx-auto mb-6">
-                    <div className="absolute inset-0 border-4 border-emerald-400/30 rounded-full"></div>
-                    <div className="absolute inset-0 border-4 border-transparent border-t-emerald-400 rounded-full animate-spin"></div>
-                    <div className="absolute inset-2 border-4 border-transparent border-t-cyan-400 rounded-full animate-spin animation-reverse"></div>
-                  </div>
-
-                  <h3 className="text-white text-xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    {serverConnected
-                      ? "AI 분석 진행 중..."
-                      : "데모 분석 진행 중..."}
-                  </h3>
-
-                  <div className="w-48 h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300"
-                      style={{ width: `${loadingProgress}%` }}
-                    ></div>
-                  </div>
-
-                  <p className="text-gray-300 text-sm">
-                    {loadingProgress < 30
-                      ? serverConnected
-                        ? "AI 키워드 분석 중..."
-                        : "키워드 분석 중..."
-                      : loadingProgress < 60
-                      ? "도메인 매칭 중..."
-                      : loadingProgress < 90
-                      ? "상품 필터링 중..."
-                      : "결과 준비 중..."}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* 핀들 */}
-            <div ref={mapRef} className="relative w-full h-full">
-              {pins.map((pin) => (
-                <Pin
-                  key={pin.id}
-                  pin={pin}
-                  isSelected={selectedPin?.id === pin.id}
-                  onClick={handlePinClick}
-                />
-              ))}
-            </div>
-
-            {/* 상품 발견 카운터 */}
-            {pins.length > 0 && (
-              <div className="absolute top-6 left-6 backdrop-blur-xl bg-gradient-to-r from-emerald-400/20 to-cyan-400/20 border border-emerald-400/30 text-white px-6 py-3 rounded-2xl shadow-2xl">
-                <div className="flex items-center space-x-3">
-                  <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-                  <span className="font-bold text-lg">
-                    {pins.length}개 발견
-                  </span>
-                  <Sparkles className="w-5 h-5 text-yellow-400" />
-                  {serverConnected && (
-                    <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded-lg">
-                      AI
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 지도 범례 */}
-            {pins.length > 0 && (
-              <div className="absolute bottom-6 left-6 backdrop-blur-xl bg-black/40 border border-gray-700/50 rounded-2xl p-4">
-                <h4 className="text-white text-sm font-semibold mb-3">
-                  상품 분포
-                </h4>
-                <div className="space-y-2">
-                  {Object.entries(pinStyles).map(([type, style]) => {
-                    // Only show deposit, savings, and loan if they are present in pins
-                    if (type === "investment") return null; // Remove investment from legend
-                    const count = pins.filter(
-                      (pin) => pin.type === type
-                    ).length;
-                    if (count === 0) return null;
-
-                    return (
-                      <div
-                        key={type}
-                        className="flex items-center space-x-2 text-xs"
-                      >
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: style.color }}
-                        ></div>
-                        <span className="text-gray-300">{style.name}</span>
-                        <span className="text-gray-500">({count})</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* 채팅 오버레이 */}
-          {showChat && (
-            <div className="absolute inset-0 backdrop-blur-xl bg-black/50 z-20 flex flex-col">
-              <div className="backdrop-blur-xl bg-gray-950/90 border-b border-gray-700/50 p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-2 h-2 rounded-full animate-pulse ${
-                        serverConnected ? "bg-emerald-400" : "bg-yellow-400"
-                      }`}
-                    ></div>
-                    <h2 className="text-white font-bold text-lg">
-                      {serverConnected ? "AI 상담사" : "AI 상담사 (데모)"}
-                    </h2>
-                  </div>
-                  <button
-                    onClick={() => setShowChat(false)}
-                    className="w-10 h-10 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl flex items-center justify-center transition-colors backdrop-blur-sm border border-gray-600/30"
-                  >
-                    <X className="w-5 h-5 text-white" />
-                  </button>
-                </div>
+          {/* Financial Hubs */}
+          {financialHubs.map((hub, index) => (
+            <div
+              key={index}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-gray-800/80 to-gray-900/80 border border-gray-700 rounded-full shadow-2xl text-center cursor-pointer hover:scale-105 transition-transform duration-300 backdrop-blur-lg"
+              style={{
+                left: `${hub.x}%`,
+                top: `${hub.y}%`,
+                width: hub.size === "large" ? "160px" : "120px",
+                height: hub.size === "large" ? "160px" : "120px",
+                boxShadow: `0 0 40px ${hub.color}60, 0 10px 30px rgba(0,0,0,0.5)`,
+              }}
+            >
+              <h4 className="text-lg font-bold" style={{ color: hub.color }}>
+                {hub.name}
+              </h4>
+              <p className="text-xs text-gray-300 mt-1">{hub.description}</p>
+              <div className="mt-2 text-sm text-gray-400">
+                <p>상품 수: {hub.products}개</p>
+                <p>평균 금리: {hub.avgRate}%</p>
               </div>
+            </div>
+          ))}
 
-              {/* 채팅 메시지 */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {messages.map((message) => (
+          {/* Product Pins */}
+          {pins.map((pin) => (
+            <Pin
+              key={pin.id}
+              pin={pin}
+              isSelected={selectedPin?.id === pin.id}
+              onClick={handlePinClick}
+            />
+          ))}
+
+          {pins.length === 0 && !isLoading && (
+            <p className="text-gray-400 text-lg">
+              지도에서 금융 상품을 찾아보세요!
+            </p>
+          )}
+
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900/70 z-20">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-500 mx-auto"></div>
+                <p className="mt-4 text-purple-300 text-lg">
+                  AI가 최적의 금융상품을 분석 중입니다...
+                </p>
+                <div className="w-48 bg-gray-700 rounded-full h-2.5 mt-3 mx-auto">
                   <div
-                    key={message.id}
-                    className={`flex ${
-                      message.type === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-[70%] p-3 rounded-lg shadow-md ${
-                        message.type === "user"
-                          ? "bg-emerald-600 text-white rounded-br-none"
-                          : "bg-gray-800 text-gray-200 rounded-bl-none"
-                      }`}
-                    >
-                      <p className="text-sm break-words">{message.content}</p>
-                      <span className="text-xs text-white/60 mt-1 block text-right">
-                        {message.timestamp.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} /> {/* For auto-scrolling */}
-              </div>
-
-              {/* 채팅 입력 */}
-              <div className="p-4 border-t border-gray-700/50 backdrop-blur-xl bg-gray-950/90 flex items-center space-x-3">
-                <textarea
-                  className="flex-1 bg-gray-800 text-white rounded-lg p-3 resize-none focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-gray-500 text-sm custom-scrollbar"
-                  rows="1"
-                  placeholder={
-                    isLoading ? "AI 분석 중..." : "금융 상품을 검색해보세요..."
-                  }
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={isLoading}
-                ></textarea>
-                <button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputValue.trim()}
-                  className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-6 h-6 text-white" />
-                </button>
+                    className="bg-gradient-to-r from-purple-500 to-fuchsia-500 h-2.5 rounded-full"
+                    style={{ width: `${loadingProgress}%` }}
+                  ></div>
+                </div>
+                <span className="text-sm text-gray-400 mt-2 block">
+                  {Math.round(loadingProgress)}% 완료
+                </span>
               </div>
             </div>
           )}
+        </section>
 
-          {/* 선택된 핀 상세 정보 */}
-          {selectedPin && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-xl bg-gray-900/80 border border-gray-700/50 rounded-3xl p-6 shadow-2xl z-50 animate-fade-in-up w-full max-w-sm">
-              <button
-                onClick={() => setSelectedPin(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+        {/* Chat Section */}
+        <div
+          className={`fixed inset-y-0 right-0 w-full md:w-96 bg-gray-900/90 backdrop-blur-xl z-50 transform transition-transform duration-300 ease-in-out ${
+            showChat ? "translate-x-0" : "translate-x-full"
+          } md:relative md:translate-x-0 md:flex md:flex-col md:h-auto md:max-h-full md:border-l border-gray-800`}
+        >
+          <div className="flex items-center justify-between p-4 border-b border-gray-800 md:hidden">
+            <h2 className="text-lg font-bold text-purple-300">AI 금융 비서</h2>
+            <button
+              onClick={() => setShowChat(false)}
+              className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${
+                  message.type === "user" ? "justify-end" : "justify-start"
+                }`}
               >
-                <X className="w-5 h-5" />
-              </button>
-              <div className="flex items-center space-x-4 mb-4">
                 <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-                  style={{
-                    backgroundColor: pinStyles[selectedPin.type]?.color,
-                  }}
+                  className={`max-w-xs px-4 py-2 rounded-lg shadow-md ${
+                    message.type === "user"
+                      ? "bg-purple-700 text-white"
+                      : "bg-gray-700 text-gray-100"
+                  }`}
                 >
-                  {React.createElement(pinStyles[selectedPin.type]?.icon, {
-                    className: "w-6 h-6 text-white",
-                  })}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white mb-0.5">
-                    {selectedPin.name}
-                  </h3>
-                  <p className="text-sm text-gray-400">{selectedPin.bank}</p>
+                  <p>{message.content}</p>
+                  <span className="block text-xs text-gray-400 mt-1">
+                    {message.timestamp.toLocaleTimeString()}
+                  </span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">유형</p>
-                  <p className="text-white font-medium">
-                    {pinStyles[selectedPin.type]?.name}
-                  </p>
-                </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">금리/수익률</p>
-                  <p className="text-emerald-400 font-medium">
-                    {selectedPin.rate}%
-                  </p>
-                </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">최소 금액</p>
-                  <p className="text-white font-medium">
-                    {selectedPin.minAmount}만원
-                  </p>
-                </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">적합도</p>
-                  <p className="text-yellow-400 font-medium">
-                    {selectedPin.suitability}%
-                  </p>
-                </div>
-                {selectedPin.monthlyAmount > 0 && (
-                  <div className="bg-gray-800 p-3 rounded-lg col-span-2">
-                    <p className="text-gray-400">월 예상 납입액</p>
-                    <p className="text-white font-medium">
-                      {selectedPin.monthlyAmount}만원
-                    </p>
-                  </div>
-                )}
-              </div>
-              <p className="text-gray-300 text-sm leading-relaxed border-t border-gray-700/50 pt-4">
-                <span className="font-semibold text-white">추천 사유: </span>
-                {selectedPin.reason}
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 border-t border-gray-800">
+            <div className="flex bg-gray-800 rounded-lg overflow-hidden">
+              <input
+                type="text"
+                className="flex-1 p-3 bg-transparent outline-none text-gray-100 placeholder-gray-500"
+                placeholder="궁금한 금융 상품을 질문해주세요..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={isLoading}
+              />
+              <button
+                onClick={handleSendMessage}
+                className="p-3 bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading}
+              >
+                <Send className="w-5 h-5 text-white" />
+              </button>
+            </div>
+            {/* 🔥 추가: API 데이터 출처 정보 */}
+            {dataSourceInfo && (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                데이터 출처: {dataSourceInfo.type} (업데이트:{" "}
+                {new Date(dataSourceInfo.lastUpdated).toLocaleDateString()})
               </p>
+            )}
+          </div>
+
+          {/* Selected Pin Details (Chat overlay or separate section) */}
+          {selectedPin && (
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gray-800/95 backdrop-blur-xl border-t border-gray-700 z-50 max-h-1/2 overflow-y-auto">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-lg font-bold text-emerald-400">
+                  📍 {selectedPin.name}
+                </h4>
+                <button
+                  onClick={() => setSelectedPin(null)}
+                  className="p-1 rounded-full hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+              <div className="space-y-2 text-sm text-gray-300">
+                <p>
+                  • 은행: <span className="font-medium">{selectedPin.bank}</span>
+                </p>
+                <p>
+                  • 타입:{" "}
+                  <span className="font-medium">
+                    {pinStyles[selectedPin.type]?.name || "기타"}
+                  </span>
+                </p>
+                <p>
+                  • 금리:{" "}
+                  <span className="font-medium">{selectedPin.rate}%</span>
+                </p>
+                <p>
+                  • 최소 금액:{" "}
+                  <span className="font-medium">
+                    {selectedPin.minAmount.toLocaleString()}만원
+                  </span>
+                </p>
+                <p>
+                  • 적합도:{" "}
+                  <span className="font-medium text-emerald-300">
+                    {selectedPin.suitability}%
+                  </span>
+                </p>
+                <p>
+                  • AI 추천 이유:{" "}
+                  <span className="italic text-gray-400">
+                    "{selectedPin.reason}"
+                  </span>
+                </p>
+              </div>
+
+              {/* 🔥 추가: AI 분석 결과 및 사용자 특정 정보 섹션 */}
+              {selectedPin.aiAnalysis && (
+                <div className="mt-4 p-3 bg-gray-900/30 rounded-lg border border-gray-700/50">
+                  <h5 className="text-sm font-medium text-purple-300 mb-2">
+                    AI 심층 분석
+                  </h5>
+                  <div className="space-y-1 text-sm text-gray-300">
+                    {selectedPin.aiAnalysis.risk_assessment && (
+                      <p>
+                        • 위험 평가:{" "}
+                        {selectedPin.aiAnalysis.risk_assessment}
+                      </p>
+                    )}
+                    {selectedPin.aiAnalysis.expected_benefit && (
+                      <p>
+                        • 기대 효과:{" "}
+                        {selectedPin.aiAnalysis.expected_benefit}
+                      </p>
+                    )}
+                    {selectedPin.aiAnalysis.match_reasons &&
+                      selectedPin.aiAnalysis.match_reasons.length > 0 && (
+                        <p>
+                          • 주요 매칭 요인:{" "}
+                          {selectedPin.aiAnalysis.match_reasons.join(", ")}
+                        </p>
+                      )}
+                    {selectedPin.aiAnalysis.suitability_score && (
+                      <p>
+                        • AI 적합도 점수:{" "}
+                        {(selectedPin.aiAnalysis.suitability_score * 100).toFixed(1)}점
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedPin.userSpecific && (
+                <div className="mt-4">
+                  {selectedPin.userSpecific.recommended_monthly_amount ||
+                  selectedPin.userSpecific.achievement_timeline ||
+                  selectedPin.userSpecific.risk_compatibility ? (
+                    <div className="p-3 bg-purple-900/30 rounded-lg border border-purple-700/50">
+                      <h5 className="text-sm font-medium text-purple-300 mb-2">
+                        맞춤 정보
+                      </h5>
+                      <div className="space-y-1 text-sm text-gray-300">
+                        {selectedPin.userSpecific
+                          .recommended_monthly_amount && (
+                          <p>
+                            • 추천 월 납입액:{" "}
+                            {selectedPin.userSpecific.recommended_monthly_amount.toLocaleString()}
+                            원
+                          </p>
+                        )}
+                        {selectedPin.userSpecific.achievement_timeline && (
+                          <p>
+                            • 목표 달성 예상:{" "}
+                            {selectedPin.userSpecific.achievement_timeline}
+                          </p>
+                        )}
+                        {selectedPin.userSpecific.risk_compatibility && (
+                          <p>
+                            • 위험도 적합성:{" "}
+                            {selectedPin.userSpecific.risk_compatibility}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    // Show a message if userSpecific exists but is empty/null
+                    <div className="p-3 bg-gray-900/30 rounded-lg border border-gray-700/50">
+                      <h5 className="text-sm font-medium text-purple-300 mb-2">
+                        맞춤 정보
+                      </h5>
+                      <p className="text-sm text-gray-400">
+                        이 상품에 대한 추가 맞춤 정보가 없습니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

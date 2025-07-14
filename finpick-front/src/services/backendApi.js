@@ -1,160 +1,124 @@
 // finpick-front/src/services/backendApi.js
 
+import { auth, db } from "../firebase.js";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
-// 🔧 공통 API 요청 함수
 const makeRequest = async (url, options = {}) => {
-  const token = localStorage.getItem("authToken");
-
-  const defaultHeaders = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-  };
-
-  const config = {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  };
-
   try {
+    const user = auth.currentUser;
+    const headers = {
+      "Content-Type": "application/json",
+      ...options.headers,
+    };
+
+    if (user) {
+      const token = await user.getIdToken(true);
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const config = {
+      ...options,
+      headers,
+    };
+
+    console.log(`🔗 API 요청: ${url}`);
     const response = await fetch(url, config);
 
     if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem("authToken");
-        throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
+      if (response.status === 401 && user) {
+        console.log("🔄 토큰 만료, 새 토큰으로 재시도");
+        const newToken = await user.getIdToken(true);
+        headers.Authorization = `Bearer ${newToken}`;
+
+        const retryConfig = {
+          ...options,
+          headers,
+        };
+
+        const retryResponse = await fetch(url, retryConfig);
+
+        if (!retryResponse.ok) {
+          throw new Error(
+            `HTTP ${retryResponse.status}: ${retryResponse.statusText}`
+          );
+        }
+
+        const retryData = await retryResponse.json();
+        console.log(`✅ API 재시도 성공: ${url}`);
+        return retryData;
       }
+
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log(`✅ API 응답 성공: ${url}`);
+    return data;
   } catch (error) {
-    console.error("API 요청 실패:", error);
+    console.error(`❌ API 요청 실패: ${url}`, error);
     throw error;
   }
 };
 
-// 🎯 금융모델 추천 API (새로운 메인 API)
-export const FinancialModelAPI = {
-  // 🚀 자연어 기반 금융모델 추천 (메인 기능)
-  getFinancialModelRecommendation: async (
-    query,
-    userProfile = null,
-    options = {}
-  ) => {
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      console.error("토큰이 없습니다. 로그인이 필요합니다.");
-      throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
-    }
-
-    const requestData = {
-      query: query.trim(),
-      user_profile: userProfile,
-      filters: options.filters || {},
-      limit: options.limit || 5,
-    };
-
-    console.log("🎯 금융모델 추천 요청:", requestData);
-
-    try {
-      const response = await makeRequest(
-        `${API_BASE_URL}/recommendations/natural-language`,
-        {
-          method: "POST",
-          body: JSON.stringify(requestData),
-        }
-      );
-
-      console.log("✅ 금융모델 추천 응답:", response);
-      return response;
-    } catch (error) {
-      console.error("❌ 금융모델 추천 실패:", error);
-      throw error;
-    }
-  },
-
-  // 🧪 도메인 분류 테스트
-  testDomainClassification: async (query) => {
-    return await makeRequest(
-      `${API_BASE_URL}/recommendations/test/domain-classification`,
-      {
-        method: "POST",
-        body: JSON.stringify({ query }),
-      }
-    );
-  },
-
-  // 🧪 데이터셋 준비 테스트
-  testDatasetPreparation: async (domain) => {
-    return await makeRequest(
-      `${API_BASE_URL}/recommendations/test/dataset-preparation`,
-      {
-        method: "POST",
-        body: JSON.stringify({ domain }),
-      }
-    );
-  },
-};
-
-// 🏦 기존 추천 API (호환성 유지)
 export const RecommendationAPI = {
-  // 🔄 자연어 처리 (새로운 금융모델 API로 리다이렉트)
-  processNaturalLanguage: async (query, userProfile = null, options = {}) => {
-    console.log("⚠️ 기존 API 호출됨, 새로운 금융모델 API로 리다이렉트");
-    return await FinancialModelAPI.getFinancialModelRecommendation(
-      query,
-      userProfile,
-      options
-    );
-  },
-
-  // 추천 이력 조회
-  getRecommendationHistory: async (limit = 10) => {
+  getNaturalLanguageRecommendations: async (query, userProfile = null) => {
     return await makeRequest(
-      `${API_BASE_URL}/recommendations/history?limit=${limit}`
+      `${API_BASE_URL}/recommendations/natural-language`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          query,
+          user_profile: userProfile,
+          filters: {},
+          limit: 5,
+        }),
+      }
     );
   },
 
-  // 피드백 제출
-  submitFeedback: async (recommendationId, rating, feedback = null) => {
+  submitFeedback: async (recommendationId, rating, feedback) => {
     return await makeRequest(`${API_BASE_URL}/recommendations/feedback`, {
       method: "POST",
       body: JSON.stringify({
-        recommendation_id: recommendationId,
+        recommendationId,
         rating,
         feedback,
       }),
     });
   },
 
-  // 사용자 인사이트 조회
   getUserInsights: async () => {
     return await makeRequest(`${API_BASE_URL}/recommendations/user-insights`);
   },
+
+  getRecommendationHistory: async (limit = 10) => {
+    return await makeRequest(
+      `${API_BASE_URL}/recommendations/history?limit=${limit}`
+    );
+  },
 };
 
-// 🏦 상품 관련 API
 export const ProductAPI = {
-  // 전체 상품 조회
   getAllProducts: async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
     return await makeRequest(`${API_BASE_URL}/products?${params}`);
   },
 
-  // 상품 상세 조회
   getProductDetail: async (productId) => {
     return await makeRequest(`${API_BASE_URL}/products/${productId}`);
   },
 };
 
-// 🔐 인증 관련 API
 export const AuthAPI = {
-  // 토큰 검증
   verifyToken: async (token) => {
     return await makeRequest(`${API_BASE_URL}/auth/verify-token`, {
       method: "POST",
@@ -164,38 +128,32 @@ export const AuthAPI = {
     });
   },
 
-  // 사용자 프로필 조회
   getUserProfile: async () => {
     return await makeRequest(`${API_BASE_URL}/auth/profile`);
   },
 };
 
-// 🏥 헬스체크 API
 export const HealthAPI = {
-  // 서버 상태 확인
   checkStatus: async () => {
     return await makeRequest(`${API_BASE_URL}/status`);
   },
 
-  // 기본 헬스체크
   healthCheck: async () => {
     return await makeRequest(`${API_BASE_URL}/../health`);
   },
 };
 
-// 🎯 고수준 추천 서비스 클래스 - 완전 개편
 export class SmartRecommendationService {
-  // 🚀 메인 기능: 금융모델 기반 개인화 추천
   static async getPersonalizedRecommendations(query, userProfile = null) {
     try {
       console.log("🎯 개인화 추천 요청:", { query, userProfile });
 
-      // 🔥 사용자 정보 가져오기 (로컬스토리지 또는 전역 상태에서)
-      const storedUserProfile = userProfile || this.getUserProfileFromStorage();
+      const storedUserProfile =
+        userProfile || (await this.getComprehensiveUserProfile());
 
       const requestBody = {
         query: query,
-        user_profile: storedUserProfile, // 🔥 사용자 정보 포함
+        user_profile: storedUserProfile,
         filters: {},
         limit: 5,
       };
@@ -212,29 +170,151 @@ export class SmartRecommendationService {
 
       if (response.success) {
         console.log("✅ 개인화 추천 성공:", response.data);
+
+        if (storedUserProfile?.userId) {
+          await this.saveRecommendationToFirestore(
+            storedUserProfile.userId,
+            query,
+            response.data
+          );
+        }
+
         return {
           success: true,
-          data: response.data, // response.data.data가 아니라 response.data 전체를 반환
+          data: response.data,
           personalized: true,
+          personalization_level: response.personalization_level,
+          user_insights: response.user_insights,
+          recommendation_reasoning: response.recommendation_reasoning,
+          ai_metadata: response.ai_metadata,
         };
       } else {
         throw new Error(response.error || "추천 생성 실패");
       }
     } catch (error) {
       console.error("❌ 개인화 추천 실패:", error);
-
-      // 🔄 사용자 정보 없이 일반 추천으로 폴백
       return await this.getFallbackRecommendations(query);
     }
   }
 
-  // 🔥 로컬스토리지에서 사용자 정보 가져오기
+  static async getComprehensiveUserProfile() {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.log("❌ 로그인된 사용자 없음");
+        return null;
+      }
+
+      const userId = currentUser.uid;
+
+      const firestoreProfile = await this.getUserProfileFromFirestore(userId);
+      const localProfile = this.getUserProfileFromStorage();
+
+      const comprehensiveProfile = {
+        userId: userId,
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        photoURL: currentUser.photoURL,
+        ...(firestoreProfile || {}),
+        ...(localProfile || {}),
+        dataSource: {
+          firestore: !!firestoreProfile,
+          localStorage: !!localProfile,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      if (localProfile && Object.keys(localProfile).length > 0) {
+        await this.saveUserProfileToFirestore(userId, comprehensiveProfile);
+      }
+
+      console.log("🔥 종합 사용자 프로필:", comprehensiveProfile);
+      return comprehensiveProfile;
+    } catch (error) {
+      console.error("❌ 종합 사용자 프로필 수집 실패:", error);
+      return null;
+    }
+  }
+
+  static async getUserProfileFromFirestore(userId) {
+    try {
+      console.log("📊 Firestore에서 사용자 정보 조회:", userId);
+
+      const userRef = doc(db, "users", userId);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        console.log("✅ Firestore 사용자 데이터:", userData);
+        return userData;
+      } else {
+        console.log("❌ 사용자 데이터가 Firestore에 없음");
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Firestore 사용자 정보 조회 실패:", error);
+      return null;
+    }
+  }
+
+  static async saveUserProfileToFirestore(userId, profileData) {
+    try {
+      console.log("💾 Firestore에 사용자 정보 저장:", { userId, profileData });
+
+      const userRef = doc(db, "users", userId);
+      const enrichedData = {
+        ...profileData,
+        updatedAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+      };
+
+      await setDoc(userRef, enrichedData, { merge: true });
+      console.log("✅ Firestore 저장 완료");
+
+      return enrichedData;
+    } catch (error) {
+      console.error("❌ Firestore 저장 실패:", error);
+      throw error;
+    }
+  }
+
+  static async saveRecommendationToFirestore(userId, query, recommendations) {
+    try {
+      const userRef = doc(db, "users", userId);
+      const currentTime = new Date().toISOString();
+
+      const recommendationData = {
+        timestamp: currentTime, // 🔥 수정: serverTimestamp() 대신 일반 문자열 사용
+        query: query,
+        recommendations: recommendations,
+        sessionId: this.getSessionId(),
+      };
+
+      const currentProfile = await this.getUserProfileFromFirestore(userId);
+      const existingHistory = currentProfile?.recommendationHistory || [];
+      const updatedHistory = [recommendationData, ...existingHistory].slice(
+        0,
+        50
+      );
+
+      await updateDoc(userRef, {
+        recommendationHistory: updatedHistory,
+        lastRecommendationRequest: recommendationData,
+        "behaviorAnalytics.totalRecommendationRequests":
+          (currentProfile?.behaviorAnalytics?.totalRecommendationRequests ||
+            0) + 1,
+        updatedAt: serverTimestamp(), // 🔥 최상위 레벨에서만 serverTimestamp() 사용
+      });
+
+      console.log("✅ 추천 기록 Firestore 저장 완료");
+    } catch (error) {
+      console.error("❌ 추천 기록 저장 실패:", error);
+    }
+  }
+
   static getUserProfileFromStorage() {
     try {
-      // Firebase Auth 사용자 정보
       const authUser = JSON.parse(localStorage.getItem("authUser") || "{}");
-
-      // 온보딩 완료 정보들
       const basicInfo = JSON.parse(
         localStorage.getItem("onboarding_step1") || "{}"
       );
@@ -247,6 +327,10 @@ export class SmartRecommendationService {
       const goals = JSON.parse(
         localStorage.getItem("onboarding_step4") || "[]"
       );
+
+      if (Object.keys(basicInfo).length === 0) {
+        return null;
+      }
 
       const userProfile = {
         userId: authUser.uid,
@@ -264,7 +348,6 @@ export class SmartRecommendationService {
       };
 
       console.log("📋 수집된 사용자 프로필:", userProfile);
-
       return userProfile;
     } catch (error) {
       console.error("❌ 사용자 정보 가져오기 실패:", error);
@@ -272,7 +355,6 @@ export class SmartRecommendationService {
     }
   }
 
-  // 온보딩 완료 여부 확인
   static checkOnboardingComplete(basic, investment, financial, goals) {
     return !!(
       basic &&
@@ -286,93 +368,134 @@ export class SmartRecommendationService {
     );
   }
 
-  // 폴백 추천 (사용자 정보 없이)
   static async getFallbackRecommendations(query) {
     try {
       console.log("🔄 일반 추천으로 폴백:", query);
-
-      const requestBody = {
-        query: query,
-        user_profile: null,
-        filters: {},
-        limit: 5,
-      };
 
       const response = await makeRequest(
         `${API_BASE_URL}/recommendations/natural-language`,
         {
           method: "POST",
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({
+            query,
+            user_profile: null,
+            limit: 5,
+          }),
         }
       );
 
       return {
         success: true,
-        data: response.data, // response.data.data가 아니라 response.data 전체를 반환
+        data: response.data || [],
         personalized: false,
+        fallback: true,
       };
     } catch (error) {
       console.error("❌ 폴백 추천도 실패:", error);
       return {
         success: false,
-        error: ApiUtils.formatErrorMessage(error),
-        personalized: false,
+        data: [],
+        error: "추천을 가져올 수 없습니다.",
       };
     }
   }
 
-  // 피드백 제출
-  static async submitProductFeedback(productId, rating, comment = null) {
+  static getSessionId() {
+    let sessionId = sessionStorage.getItem("recommendationSessionId");
+    if (!sessionId) {
+      sessionId = `session_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      sessionStorage.setItem("recommendationSessionId", sessionId);
+    }
+    return sessionId;
+  }
+
+  static async getBehaviorAnalytics(userId) {
     try {
-      return await RecommendationAPI.submitFeedback(productId, rating, comment);
+      const userProfile = await this.getUserProfileFromFirestore(userId);
+      return (
+        userProfile?.behaviorAnalytics || {
+          totalRecommendationRequests: 0,
+          averageSatisfactionRating: 0,
+          preferredProductTypes: {},
+          lastActivity: null,
+        }
+      );
     } catch (error) {
-      console.error("❌ 피드백 제출 오류:", error);
-      return { success: false, error: error.message };
+      console.error("❌ 행동 분석 데이터 조회 실패:", error);
+      return {};
     }
   }
 
-  // 🧪 개발/테스트용 기능들
-  static async testDomainClassification(query) {
+  static async updateUserBehaviorScore(userId, interactionType) {
     try {
-      return await FinancialModelAPI.testDomainClassification(query);
+      const userRef = doc(db, "users", userId);
+      const currentData = await this.getUserProfileFromFirestore(userId);
+
+      const behaviorScore =
+        (currentData?.behaviorAnalytics?.engagementScore || 0) + 1;
+
+      await updateDoc(userRef, {
+        "behaviorAnalytics.engagementScore": behaviorScore,
+        "behaviorAnalytics.lastInteraction": {
+          type: interactionType,
+          timestamp: serverTimestamp(),
+        },
+      });
+
+      console.log(`✅ 사용자 행동 점수 업데이트: ${interactionType}`);
     } catch (error) {
-      console.error("도메인 분류 테스트 실패:", error);
-      return { error: error.message };
+      console.error("❌ 행동 점수 업데이트 실패:", error);
     }
   }
 
-  static async testDatasetPreparation(domain) {
+  static async getRecommendationHistory(userId, limit = 10) {
     try {
-      return await FinancialModelAPI.testDatasetPreparation(domain);
+      const userProfile = await this.getUserProfileFromFirestore(userId);
+      const history = userProfile?.recommendationHistory || [];
+      return history.slice(0, limit);
     } catch (error) {
-      console.error("데이터셋 준비 테스트 실패:", error);
-      return { error: error.message };
+      console.error("❌ 추천 기록 조회 실패:", error);
+      return [];
     }
   }
 
-  // 📊 사용자 인사이트 관련
-  static async getUserInsights() {
+  static async submitFeedback(userId, recommendationId, rating, feedback) {
     try {
-      return await RecommendationAPI.getUserInsights();
-    } catch (error) {
-      console.error("사용자 인사이트 조회 실패:", error);
-      return { success: false, error: error.message };
-    }
-  }
+      const userRef = doc(db, "users", userId);
+      const feedbackData = {
+        id: crypto.randomUUID(),
+        recommendationId,
+        rating,
+        feedback,
+        timestamp: serverTimestamp(),
+      };
 
-  static async getRecommendationHistory(limit = 10) {
-    try {
-      return await RecommendationAPI.getRecommendationHistory(limit);
+      const currentProfile = await this.getUserProfileFromFirestore(userId);
+      const existingFeedback = currentProfile?.feedbackHistory || [];
+      const updatedFeedback = [feedbackData, ...existingFeedback].slice(0, 100);
+
+      const avgRating =
+        updatedFeedback.reduce((sum, fb) => sum + fb.rating, 0) /
+        updatedFeedback.length;
+
+      await updateDoc(userRef, {
+        feedbackHistory: updatedFeedback,
+        "behaviorAnalytics.averageSatisfactionRating": avgRating,
+        "behaviorAnalytics.totalFeedback": updatedFeedback.length,
+      });
+
+      console.log("✅ 피드백 저장 완료");
+      return feedbackData;
     } catch (error) {
-      console.error("추천 이력 조회 실패:", error);
-      return { success: false, error: error.message };
+      console.error("❌ 피드백 저장 실패:", error);
+      throw error;
     }
   }
 }
 
-// 🔧 유틸리티 함수들 - ApiUtils export 추가!
 export const ApiUtils = {
-  // 서버 연결 상태 확인
   checkServerConnection: async () => {
     try {
       const response = await HealthAPI.healthCheck();
@@ -383,41 +506,67 @@ export const ApiUtils = {
     }
   },
 
-  // 인증 상태 확인
   checkAuthStatus: () => {
-    const token = localStorage.getItem("authToken");
-    return !!token;
+    return !!auth.currentUser;
   },
 
-  // 에러 메시지 포맷팅
   formatErrorMessage: (error) => {
     if (typeof error === "string") return error;
     if (error?.message) return error.message;
     return "알 수 없는 오류가 발생했습니다.";
   },
 
-  // 로딩 시뮬레이션 (개발용)
   simulateLoading: (ms = 2000) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   },
 
-  // 토큰 새로고침
   refreshAuthToken: async () => {
     try {
-      const token = localStorage.getItem("authToken");
-      if (!token) return false;
+      const user = auth.currentUser;
+      if (!user) return false;
 
-      const response = await AuthAPI.verifyToken(token);
-      return response.success;
+      const token = await user.getIdToken(true);
+      return !!token;
     } catch (error) {
       console.error("토큰 검증 실패:", error);
-      localStorage.removeItem("authToken");
       return false;
     }
   },
 };
 
-// 🔗 레거시 호환성을 위한 기본 export
+export const FinancialModelAPI = {
+  getFinancialModelRecommendation: async (
+    query,
+    userProfile = null,
+    options = {}
+  ) => {
+    return await SmartRecommendationService.getPersonalizedRecommendations(
+      query,
+      userProfile
+    );
+  },
+
+  testDomainClassification: async (query) => {
+    return await makeRequest(
+      `${API_BASE_URL}/recommendations/test/domain-classification`,
+      {
+        method: "POST",
+        body: JSON.stringify({ query }),
+      }
+    );
+  },
+
+  testDatasetPreparation: async (domain) => {
+    return await makeRequest(
+      `${API_BASE_URL}/recommendations/test/dataset-preparation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ domain }),
+      }
+    );
+  },
+};
+
 export default {
   FinancialModelAPI,
   RecommendationAPI,
