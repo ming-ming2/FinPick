@@ -186,102 +186,137 @@ export const HealthAPI = {
 // 🎯 고수준 추천 서비스 클래스 - 완전 개편
 export class SmartRecommendationService {
   // 🚀 메인 기능: 금융모델 기반 개인화 추천
-  static async getPersonalizedRecommendations(
-    userQuery,
-    userProfile = null,
-    options = {}
-  ) {
+  static async getPersonalizedRecommendations(query, userProfile = null) {
     try {
-      console.log("🎯 금융모델 기반 추천 요청 시작...");
+      console.log("🎯 개인화 추천 요청:", { query, userProfile });
 
-      // 토큰 확인
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        throw new Error("로그인이 필요합니다. 다시 로그인해주세요.");
-      }
+      // 🔥 사용자 정보 가져오기 (로컬스토리지 또는 전역 상태에서)
+      const storedUserProfile = userProfile || this.getUserProfileFromStorage();
 
-      // 새로운 금융모델 API 호출
-      const result = await FinancialModelAPI.getFinancialModelRecommendation(
-        userQuery,
-        userProfile,
-        options
+      const requestBody = {
+        query: query,
+        user_profile: storedUserProfile, // 🔥 사용자 정보 포함
+        filters: {},
+        limit: 5,
+      };
+
+      console.log("📤 전송할 요청 데이터:", requestBody);
+
+      const response = await makeRequest(
+        `${API_BASE_URL}/recommendations/natural-language`,
+        {
+          method: "POST",
+          body: JSON.stringify(requestBody),
+        }
       );
 
-      if (
-        result.success &&
-        result.recommendation_type === "financial_model_based"
-      ) {
-        console.log("✅ 금융모델 추천 성공:", result);
-
+      if (response.success) {
+        console.log("✅ 개인화 추천 성공:", response.data);
         return {
           success: true,
-          type: "financial_model",
-          data: {
-            // 🎯 핵심: 금융모델 정보
-            financialModel: {
-              name: result.financial_model?.model_name,
-              type: result.financial_model?.model_type,
-              strategy: result.financial_model?.strategy,
-              expectedOutcomes: result.financial_model?.expected_outcomes,
-              implementationSteps: result.financial_model?.implementation_steps,
-              confidence: result.financial_model?.confidence,
-            },
-
-            // 🏦 추천 상품들
-            recommendations: result.recommendations || [],
-
-            // 📊 포트폴리오 분석
-            portfolioAnalysis: result.portfolio_analysis || {},
-
-            // 🤖 AI 인사이트
-            ai_insights: {
-              method: result.ai_insights?.method || "Gemini AI 금융모델 분석",
-              domainSpecialized: result.ai_insights?.domain_specialized || true,
-              modelBased: result.ai_insights?.model_based || true,
-              confidence_score: result.ai_insights?.confidence_score || 0.8,
-              userAnalysis: result.ai_insights?.user_analysis || {},
-              financialStrategy: result.ai_insights?.financial_strategy || {},
-              expectedOutcomes: result.ai_insights?.expected_outcomes || {},
-              recommendationSummary:
-                result.ai_insights?.recommendation_summary || "",
-            },
-
-            // 📋 실행 계획
-            nextSteps: result.next_steps || [],
-
-            // 📈 메타데이터
-            metadata: {
-              userQuery: result.user_query,
-              classifiedDomain: result.classified_domain,
-              datasetSize: result.metadata?.dataset_size || 0,
-              modelConfidence: result.metadata?.model_confidence || 3,
-              timestamp: result.metadata?.timestamp,
-              apiVersion: result.metadata?.api_version,
-            },
-          },
+          data: response.data, // response.data.data가 아니라 response.data 전체를 반환
+          personalized: true,
         };
       } else {
-        console.warn("⚠️ 예상과 다른 응답 형식:", result);
-        return {
-          success: true,
-          type: "fallback",
-          data: {
-            recommendations: result.recommendations || [],
-            ai_insights: result.ai_insights || {},
-          },
-        };
+        throw new Error(response.error || "추천 생성 실패");
       }
     } catch (error) {
-      console.error("❌ 금융모델 추천 실패:", error);
+      console.error("❌ 개인화 추천 실패:", error);
 
-      // 사용자 친화적 에러 메시지
-      const userFriendlyMessage = ApiUtils.formatErrorMessage(error);
+      // 🔄 사용자 정보 없이 일반 추천으로 폴백
+      return await this.getFallbackRecommendations(query);
+    }
+  }
+
+  // 🔥 로컬스토리지에서 사용자 정보 가져오기
+  static getUserProfileFromStorage() {
+    try {
+      // Firebase Auth 사용자 정보
+      const authUser = JSON.parse(localStorage.getItem("authUser") || "{}");
+
+      // 온보딩 완료 정보들
+      const basicInfo = JSON.parse(
+        localStorage.getItem("onboarding_step1") || "{}"
+      );
+      const investmentPersonality = JSON.parse(
+        localStorage.getItem("onboarding_step2") || "{}"
+      );
+      const financialStatus = JSON.parse(
+        localStorage.getItem("onboarding_step3") || "{}"
+      );
+      const goals = JSON.parse(
+        localStorage.getItem("onboarding_step4") || "[]"
+      );
+
+      const userProfile = {
+        userId: authUser.uid,
+        email: authUser.email,
+        basicInfo: basicInfo,
+        investmentPersonality: investmentPersonality,
+        financialStatus: financialStatus,
+        goals: goals,
+        completedOnboarding: this.checkOnboardingComplete(
+          basicInfo,
+          investmentPersonality,
+          financialStatus,
+          goals
+        ),
+      };
+
+      console.log("📋 수집된 사용자 프로필:", userProfile);
+
+      return userProfile;
+    } catch (error) {
+      console.error("❌ 사용자 정보 가져오기 실패:", error);
+      return null;
+    }
+  }
+
+  // 온보딩 완료 여부 확인
+  static checkOnboardingComplete(basic, investment, financial, goals) {
+    return !!(
+      basic &&
+      Object.keys(basic).length > 0 &&
+      investment &&
+      Object.keys(investment).length > 0 &&
+      financial &&
+      Object.keys(financial).length > 0 &&
+      goals &&
+      goals.length > 0
+    );
+  }
+
+  // 폴백 추천 (사용자 정보 없이)
+  static async getFallbackRecommendations(query) {
+    try {
+      console.log("🔄 일반 추천으로 폴백:", query);
+
+      const requestBody = {
+        query: query,
+        user_profile: null,
+        filters: {},
+        limit: 5,
+      };
+
+      const response = await makeRequest(
+        `${API_BASE_URL}/recommendations/natural-language`,
+        {
+          method: "POST",
+          body: JSON.stringify(requestBody),
+        }
+      );
 
       return {
+        success: true,
+        data: response.data, // response.data.data가 아니라 response.data 전체를 반환
+        personalized: false,
+      };
+    } catch (error) {
+      console.error("❌ 폴백 추천도 실패:", error);
+      return {
         success: false,
-        error: userFriendlyMessage,
-        originalError: error.message,
-        type: "error",
+        error: ApiUtils.formatErrorMessage(error),
+        personalized: false,
       };
     }
   }

@@ -45,7 +45,7 @@ const FinPickPremiumMap = () => {
   const [isCheckingConnection, setIsCheckingConnection] = useState(true);
 
   const [liveData, setLiveData] = useState({
-    totalProducts: 340,
+    totalProducts: 379, // 340 → 379로 업데이트
     institutions: 15,
     realTimeUpdates: "24/7",
     activeMining: true,
@@ -79,7 +79,7 @@ const FinPickPremiumMap = () => {
     const interval = setInterval(() => {
       setLiveData((prev) => ({
         ...prev,
-        totalProducts: 340 + Math.floor(Math.random() * 5),
+        totalProducts: 379 + Math.floor(Math.random() * 5),
         institutions: 15 + Math.floor(Math.random() * 3),
       }));
     }, 3000);
@@ -109,55 +109,49 @@ const FinPickPremiumMap = () => {
   }, [messages]);
 
   // --- Constant Data ---
-  // 🎯 금융 도메인별 허브 데이터
+  // 🎯 금융 도메인별 허브 데이터 - 2개 도메인으로 단순화
   const financialHubs = [
     {
       name: "예금/적금",
       description: "안전한 저축상품",
-      x: 25,
-      y: 25,
-      color: "#3B82F6",
+      x: 35, // 좀 더 가운데로 이동
+      y: 40,
+      color: "#3B82F6", // 파란색 유지
       size: "large",
-      products: 296,
+      products: 296, // 140(예금) + 156(적금)
       avgRate: 3.2,
       riskLevel: "낮음",
-      keywords: ["안전", "저축", "적금", "예금", "안정", "보장"],
-    },
-    {
-      name: "투자상품",
-      description: "수익성 중심 상품",
-      x: 75,
-      y: 25,
-      color: "#10B981",
-      size: "large",
-      products: 85,
-      avgRate: 6.8,
-      riskLevel: "중-고위험",
-      keywords: ["투자", "수익", "펀드", "ETF", "주식", "채권"],
+      keywords: [
+        "안전",
+        "저축",
+        "적금",
+        "예금",
+        "안정",
+        "보장",
+        "목돈",
+        "모으기",
+      ],
     },
     {
       name: "대출상품",
       description: "자금조달 솔루션",
-      x: 25,
-      y: 75,
-      color: "#F59E0B",
+      x: 65, // 좀 더 가운데로 이동
+      y: 40,
+      color: "#F59E0B", // 주황색 유지
       size: "large",
-      products: 44,
-      avgRate: 4.5,
-      riskLevel: "해당없음",
-      keywords: ["대출", "신용대출", "주택담보", "자금", "대여", "론"],
-    },
-    {
-      name: "특화상품",
-      description: "맞춤형 금융상품",
-      x: 75,
-      y: 75,
-      color: "#8B5CF6",
-      size: "medium",
-      products: 55,
+      products: 83, // 44(신용대출) + 39(주택담보대출)
       avgRate: 4.1,
-      riskLevel: "다양",
-      keywords: ["특화", "맞춤", "프리미엄", "VIP", "개인화", "청년", "시니어"],
+      riskLevel: "해당없음",
+      keywords: [
+        "대출",
+        "신용대출",
+        "주택담보",
+        "자금",
+        "대여",
+        "론",
+        "빌리기",
+        "융자",
+      ],
     },
   ];
 
@@ -176,6 +170,7 @@ const FinPickPremiumMap = () => {
       bgGlow: "shadow-emerald-500/20",
     },
     investment: {
+      // Keep investment for mapping but will not be used for display
       color: "#8B5CF6",
       icon: TrendingUp,
       name: "투자",
@@ -228,31 +223,18 @@ const FinPickPremiumMap = () => {
         bank: "우리은행",
         domain: "예금/적금",
       },
-    ],
-    투자상품: [
+      // 기존 투자상품 샘플 데이터 일부를 예금/적금으로 이동 가능
       {
         id: 4,
-        name: "삼성 밸런스펀드",
-        type: "investment",
-        rate: 7.2,
-        minAmount: 10,
+        name: "미래에셋 배당플러스",
+        type: "deposit", // Changed to deposit
+        rate: 4.2,
+        minAmount: 50,
         suitability: 85,
-        reason: "안정적 수익, 분산투자 효과",
-        monthlyAmount: 30,
-        bank: "삼성자산운용",
-        domain: "투자상품",
-      },
-      {
-        id: 5,
-        name: "KODEX 200 ETF",
-        type: "investment",
-        rate: 8.5,
-        minAmount: 1,
-        suitability: 82,
-        reason: "시장 연동, 높은 유동성",
-        monthlyAmount: 20,
-        bank: "삼성자산운용",
-        domain: "투자상품",
+        reason: "안정적 배당수익 기대",
+        monthlyAmount: 0,
+        bank: "미래에셋",
+        domain: "예금/적금",
       },
     ],
     대출상품: [
@@ -268,19 +250,17 @@ const FinPickPremiumMap = () => {
         bank: "KB국민은행",
         domain: "대출상품",
       },
-    ],
-    특화상품: [
       {
-        id: 8,
-        name: "청년 창업지원 적금",
-        type: "savings",
-        rate: 4.0,
-        minAmount: 5,
-        suitability: 95,
-        reason: "청년 전용, 정부 지원금리",
-        monthlyAmount: 30,
-        bank: "기업은행",
-        domain: "특화상품",
+        id: 7,
+        name: "하나 주택담보대출",
+        type: "loan",
+        rate: 3.8,
+        minAmount: 1000,
+        suitability: 90,
+        reason: "최저 금리 주택담보",
+        monthlyAmount: 0,
+        bank: "하나은행",
+        domain: "대출상품",
       },
     ],
   };
@@ -289,58 +269,51 @@ const FinPickPremiumMap = () => {
   // 🔧 백엔드 상품 타입을 프론트엔드 타입으로 매핑
   const mapProductType = (backendType) => {
     const typeMap = {
+      // 예금/적금 관련
       정기예금: "deposit",
-      예금: "deposit", // 예금도 deposit으로
+      예금: "deposit",
       적금: "savings",
+      정기적금: "savings",
+      자유적금: "savings",
+
+      // 대출 관련
       신용대출: "loan",
       주택담보대출: "loan",
-      대출: "loan", // 일반 대출도 loan으로
-      투자상품: "investment",
-      펀드: "investment", // 펀드도 investment로
-      ETF: "investment", // ETF도 investment로
+      마이너스대출: "loan",
+      대출: "loan",
+
+      // 투자상품 관련 매핑 삭제
     };
-    return typeMap[backendType] || "savings"; // 기본값 'savings'
+    return typeMap[backendType] || "savings"; // 기본값
   };
 
   // 🔧 상품 유형을 기반으로 도메인 추론 - 🔥 오류 수정
   const inferDomain = (productType) => {
-    // 🔥 productType이 undefined이거나 null인 경우 기본값 처리
     if (!productType || typeof productType !== "string") {
-      console.warn("⚠️ productType이 정의되지 않음:", productType);
-      return "특화상품"; // 기본값 반환
+      return "예금/적금"; // 기본값
     }
 
     const type = productType.toLowerCase();
 
-    if (
-      type.includes("예금") ||
-      type.includes("적금") ||
-      type.includes("deposit") ||
-      type.includes("savings")
-    ) {
-      return "예금/적금";
-    } else if (
-      type.includes("대출") ||
-      type.includes("loan") ||
-      type.includes("신용대출") ||
-      type.includes("주택담보대출")
-    ) {
+    // 대출 관련 키워드 체크
+    const loanKeywords = [
+      "대출",
+      "loan",
+      "신용대출",
+      "주택담보대출",
+      "마이너스대출",
+    ];
+    if (loanKeywords.some((keyword) => type.includes(keyword))) {
       return "대출상품";
-    } else if (
-      type.includes("투자") ||
-      type.includes("펀드") ||
-      type.includes("etf") ||
-      type.includes("investment")
-    ) {
-      return "투자상품";
-    } else {
-      return "특화상품";
     }
+
+    // 예금/적금 관련은 기본값
+    return "예금/적금";
   };
 
-  // 🔧 월 납입액 추정 (핀 상세 정보용)
+  // 🔧 월 납입액 추정 함수도 수정
   const estimateMonthlyAmount = (product) => {
-    // product.minimum_amount가 0일 경우를 대비하여 100000을 기본값으로 사용
+    // 백엔드 응답 구조에 맞게 수정
     const minAmount = product.minimum_amount || 100000;
     if (minAmount >= 10000000) return 0; // 대출은 월 납입이 없을 수 있음
     return Math.max(1, Math.floor(minAmount / 10000 / 10));
@@ -383,10 +356,9 @@ const FinPickPremiumMap = () => {
 
   // 핀 드롭 애니메이션
   const dropPins = (products) => {
-    const positions = generatePinPositions(products);
     setPins([]); // Clear existing pins before dropping new ones
 
-    positions.forEach((product, index) => {
+    products.forEach((product, index) => {
       setTimeout(() => {
         const newPin = {
           ...product,
@@ -401,8 +373,8 @@ const FinPickPremiumMap = () => {
           const pingElement = document.createElement("div");
           pingElement.className =
             "absolute w-20 h-20 border-2 border-emerald-400 rounded-full animate-ping opacity-75";
-          pingElement.style.left = `${product.x}%`;
-          pingElement.style.top = `${product.y}%`;
+          pingElement.style.left = `${newPin.x}%`;
+          pingElement.style.top = `${newPin.y}%`;
           pingElement.style.transform = "translate(-50%, -50%)";
           pingElement.style.pointerEvents = "none";
           mapRef.current?.appendChild(pingElement);
@@ -427,20 +399,23 @@ const FinPickPremiumMap = () => {
     console.log("🔄 폴백 모드: 더미 데이터 사용");
 
     const input = query.toLowerCase();
-    let selectedDomainName = "예금/적금";
+    let selectedDomainName = "예금/적금"; // 기본값
 
-    // 대출 관련 키워드 추가
-    const loanKeywords = ["대출", "빌리", "급전", "필요", "융통", "살려"];
+    // 대출 관련 키워드 체크
+    const loanKeywords = [
+      "대출",
+      "빌리",
+      "급전",
+      "필요",
+      "융통",
+      "살려",
+      "자금",
+      "론",
+    ];
     if (loanKeywords.some((keyword) => input.includes(keyword))) {
       selectedDomainName = "대출상품";
-    } else {
-      for (const hub of financialHubs) {
-        if (hub.keywords.some((keyword) => input.includes(keyword))) {
-          selectedDomainName = hub.name;
-          break;
-        }
-      }
     }
+    // 예금/적금은 기본값이므로 별도 체크 불필요
 
     const products =
       sampleProducts[selectedDomainName] || sampleProducts["예금/적금"];
@@ -465,7 +440,7 @@ const FinPickPremiumMap = () => {
     }, 2500); // Simulate API delay
   };
 
-  // 🔧 백엔드 데이터를 프론트엔드 형식으로 변환 - 🔥 안전성 강화
+  // 🔧 백엔드 데이터를 프론트엔드 형식으로 변환 - 🔥 올바른 버전
   const convertBackendProducts = (products) => {
     if (!Array.isArray(products)) {
       console.error("❌ products가 배열이 아님:", products);
@@ -474,21 +449,36 @@ const FinPickPremiumMap = () => {
 
     return products.map((product, index) => {
       try {
+        console.log(`🔍 상품 ${index + 1} 변환:`, {
+          product_id: product.product_id,
+          product_name: product.product_name,
+          provider_name: product.provider_name,
+          interest_rate: product.interest_rate,
+          minimum_amount: product.minimum_amount,
+          match_score: product.match_score, // 🔥 추가 로그
+          ai_analysis_score: product.ai_analysis?.model_fit_score, // 🔥 추가 로그
+        });
+
         return {
-          id: product.id || `product_${Date.now()}_${index}`, // product_id 대신 id 사용
-          name: product.name || "상품명 미제공",
-          type: mapProductType(product.type || "savings"), // 백엔드 type을 mapProductType으로 변환
+          id: product.product_id || `product_${Date.now()}_${index}`,
+          name: product.product_name || "상품명 미제공",
+          type: mapProductType(product.product_type || "savings"),
           rate: product.interest_rate || 0,
           minAmount: Math.floor((product.minimum_amount || 100000) / 10000),
-          suitability: Math.round(product.match_score || 75),
-          reason: product.recommendation_reason || "추천 이유 없음",
+          // 🔥 점수 매핑 개선: 여러 필드에서 점수 찾기
+          suitability: Math.round(
+            product.match_score || product.ai_analysis?.model_fit_score || 75
+          ),
+          reason:
+            product.recommendation_reason ||
+            product.ai_analysis?.contribution ||
+            "AI 추천 상품",
           monthlyAmount: estimateMonthlyAmount(product),
-          bank: product.provider || "은행명 미제공", // bank 대신 provider 사용
-          domain: inferDomain(product.type || "savings"), // 백엔드 type을 inferDomain으로 변환
+          bank: product.provider_name || "은행명 미제공",
+          domain: inferDomain(product.product_type || "savings"),
         };
       } catch (error) {
         console.error("❌ 상품 변환 오류:", error, product);
-        // 오류 발생 시 기본 상품 반환
         return {
           id: `error_product_${Date.now()}_${index}`,
           name: "상품 정보 오류",
@@ -499,7 +489,7 @@ const FinPickPremiumMap = () => {
           reason: "상품 정보를 불러오는데 오류가 발생했습니다.",
           monthlyAmount: 10,
           bank: "정보 없음",
-          domain: "특화상품",
+          domain: "예금/적금",
         };
       }
     });
@@ -908,10 +898,8 @@ const FinPickPremiumMap = () => {
                 className="w-full h-full"
                 style={{
                   backgroundImage: `
-                    radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 75% 25%, rgba(16, 185, 129, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 25% 75%, rgba(245, 158, 11, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 75% 75%, rgba(139, 92, 246, 0.2) 0%, transparent 50%)
+                    radial-gradient(circle at 35% 40%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+                    radial-gradient(circle at 65% 40%, rgba(245, 158, 11, 0.3) 0%, transparent 50%)
                   `,
                 }}
               ></div>
@@ -1025,6 +1013,8 @@ const FinPickPremiumMap = () => {
                 </h4>
                 <div className="space-y-2">
                   {Object.entries(pinStyles).map(([type, style]) => {
+                    // Only show deposit, savings, and loan if they are present in pins
+                    if (type === "investment") return null; // Remove investment from legend
                     const count = pins.filter(
                       (pin) => pin.type === type
                     ).length;
