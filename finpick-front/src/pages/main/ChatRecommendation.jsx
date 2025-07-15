@@ -1,3 +1,5 @@
+// finpick-front/src/pages/main/ChatRecommendation.jsx
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   Send,
@@ -13,22 +15,70 @@ import {
   Building,
   AlertTriangle,
   RefreshCw,
+  Star,
+  Zap,
+  Target,
+  Eye,
+  Filter,
+  BarChart3,
+  Compass,
 } from "lucide-react";
 
-// 🔗 API 서비스 import (Adjust path if necessary)
+// 🔗 API 서비스 import
 import {
   SmartRecommendationService,
   ApiUtils,
 } from "../../services/backendApi";
 
-const FinPickPremiumMap = () => {
+// 🌟 고정된 별자리 모양 정의 (5개의 별)
+// 각 포인트는 별자리의 상대적인 위치 (0-100%)와 역할 (예: 중심, 외곽)을 정의할 수 있습니다.
+const SAVINGS_DEPOSIT_CONSTELLATION_SHAPE = {
+  name: "저축의 별 (오각형)",
+  points: [
+    { x: 50, y: 30, type: "center", id: "s1" }, // 가장 중요한 별 (가장 적합한 상품)
+    { x: 30, y: 50, type: "outskirt", id: "s2" },
+    { x: 70, y: 50, type: "outskirt", id: "s3" },
+    { x: 40, y: 70, type: "outskirt", id: "s4" },
+    { x: 60, y: 70, type: "outskirt", id: "s5" },
+  ],
+  connections: [
+    ["s1", "s2"],
+    ["s1", "s3"], // 중심에서 양쪽으로
+    ["s2", "s4"],
+    ["s3", "s5"], // 양쪽에서 아래로
+    ["s4", "s5"], // 바닥 연결 (오각형)
+    // ["s1", "s4"], ["s1", "s5"] // 더 많은 연결 원하면 추가
+  ],
+};
+
+const LOAN_CONSTELLATION_SHAPE = {
+  name: "대출의 별 (삼각형 + 보조 별)",
+  points: [
+    { x: 50, y: 35, type: "center", id: "l1" }, // 가장 중요한 별 (가장 적합한 상품)
+    { x: 30, y: 65, type: "outskirt", id: "l2" },
+    { x: 70, y: 65, type: "outskirt", id: "l3" },
+    { x: 40, y: 45, type: "helper", id: "l4" }, // 보조 별
+    { x: 60, y: 45, type: "helper", id: "l5" }, // 보조 별
+  ],
+  connections: [
+    ["l1", "l2"],
+    ["l1", "l3"], // 삼각형 기본
+    ["l2", "l3"], // 삼각형 바닥
+    ["l1", "l4"],
+    ["l1", "l5"], // 중심에서 보조 별로
+    ["l4", "l5"], // 보조 별끼리 연결
+    // ["l2", "l4"], ["l3", "l5"] // 더 많은 연결 원하면 추가
+  ],
+};
+
+const FinPickConstellationMap = () => {
   // --- State and Refs ---
   const [messages, setMessages] = useState([
     {
       id: 1,
       type: "ai",
       content:
-        "안녕하세요! 원하는 금융상품을 말씀해주세요. AI가 실시간으로 최적의 상품들을 찾아드릴게요! 🗺️",
+        "안녕하세요! 원하는 금융상품을 말씀해주세요. AI가 실시간으로 별자리를 구성하여 최적의 상품들을 찾아드릴게요! ✨",
       timestamp: new Date(),
     },
   ]);
@@ -36,29 +86,115 @@ const FinPickPremiumMap = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [pins, setPins] = useState([]);
+  const [constellationLines, setConstellationLines] = useState([]);
   const [selectedPin, setSelectedPin] = useState(null);
   const [showChat, setShowChat] = useState(false);
+  const [filterMode, setFilterMode] = useState("all"); // all, high-rating, best-rate
+  const [animationPhase, setAnimationPhase] = useState("idle"); // idle, forming, complete
+  const [originalProductsData, setOriginalProductsData] = useState([]); // 🔥 원본 상품 데이터 저장
 
   // 🔗 API 연동 관련 상태
   const [serverConnected, setServerConnected] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [isCheckingConnection, setIsCheckingConnection] = useState(true);
 
-  const [liveData, setLiveData] = useState({
-    totalProducts: 379, // 340 → 379로 업데이트
-    institutions: 15,
-    realTimeUpdates: "24/7",
-    activeMining: true,
-  });
-  const mapRef = useRef(null);
-  const messagesEndRef = useRef(null); // Ref for auto-scrolling chat
-
-  // 🔗 추가 상태 변수
+  // 🔥 추가 상태 변수
   const [userProfile, setUserProfile] = useState(null);
   const [userInsights, setUserInsights] = useState({});
   const [personalizationLevel, setPersonalizationLevel] = useState("none");
   const [recommendationReasoning, setRecommendationReasoning] = useState("");
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
+
+  const [liveData, setLiveData] = useState({
+    totalProducts: 379,
+    institutions: 15,
+    realTimeUpdates: "24/7",
+    activeMining: true,
+    constellationsFormed: 0,
+    smartConnections: 0,
+  });
+
+  const mapRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const svgRef = useRef(null);
+
+  // --- Sub-Components ---
+  const ServerStatus = () => (
+    <div className="flex items-center space-x-2">
+      {isCheckingConnection ? (
+        <>
+          <RefreshCw className="w-3 h-3 text-yellow-400 animate-spin" />
+          <span className="text-xs text-yellow-400">연결 확인 중...</span>
+        </>
+      ) : (
+        <>
+          <div
+            className={`w-2 h-2 rounded-full animate-pulse ${
+              serverConnected ? "bg-emerald-400" : "bg-red-400"
+            }`}
+          ></div>
+          <span
+            className={`text-xs ${
+              serverConnected ? "text-emerald-400" : "text-red-400"
+            }`}
+          >
+            {serverConnected ? "AI 연결됨" : "데모 모드"}
+          </span>
+        </>
+      )}
+    </div>
+  );
+
+  // 🚨 에러 메시지 컴포넌트
+  const ErrorMessage = ({ error, onRetry }) => (
+    <div className="absolute top-20 left-6 right-6 bg-red-900/80 border border-red-500/50 text-white px-4 py-3 rounded-2xl backdrop-blur-xl z-40">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <AlertTriangle className="w-4 h-4 text-red-400" />
+          <span className="text-sm">API 오류: {error}</span>
+        </div>
+        <button
+          onClick={onRetry}
+          className="text-xs bg-red-600 hover:bg-red-500 px-3 py-1 rounded-lg transition-colors flex items-center space-x-1"
+        >
+          <RefreshCw className="w-3 h-3" />
+          <span>재시도</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // 🔥 PersonalizationBadge 컴포넌트
+  const PersonalizationBadge = ({ level }) => {
+    const badges = {
+      none: { text: "일반 추천", color: "bg-gray-600", icon: "🔍" },
+      basic: { text: "기본 맞춤", color: "bg-blue-600", icon: "👤" },
+      low: { text: "부분 맞춤", color: "bg-green-600", icon: "🎯" },
+      medium: { text: "개인화 추천", color: "bg-purple-600", icon: "🧠" },
+      high: { text: "고도 개인화", color: "bg-yellow-600", icon: "⭐" },
+    };
+
+    const badge = badges[level] || badges["basic"];
+
+    return (
+      <div
+        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium text-white ${badge.color}`}
+      >
+        <span className="mr-1">{badge.icon}</span>
+        {badge.text}
+      </div>
+    );
+  };
+
+  // 핀 클릭 핸들러 (피드백 추가)
+  const handlePinClick = async (pin) => {
+    setSelectedPin(selectedPin?.id === pin.id ? null : pin);
+
+    // 피드백 전송 (상품 선택 = 긍정적 피드백)
+    if (selectedPin?.id !== pin.id) {
+      await handleProductFeedback(pin.id, 4); // 5점 만점에 4점
+    }
+  };
 
   // --- useEffect Hooks ---
   // 🔗 서버 연결 상태 확인
@@ -81,7 +217,23 @@ const FinPickPremiumMap = () => {
     checkConnection();
   }, []);
 
-  // 실시간 지표 카운터 애니메이션
+  // 🔥 추가: 사용자 프로필 로딩
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      try {
+        console.log("👤 사용자 프로필 로딩 시작");
+        const profile =
+          await SmartRecommendationService.getComprehensiveUserProfile();
+        setUserProfile(profile);
+        setDataSourceInfo(profile?.dataSource);
+        console.log("✅ 사용자 프로필 로딩 완료:", profile);
+      } catch (error) {
+        console.error("❌ 사용자 프로필 로딩 실패:", error);
+      }
+    };
+    loadUserProfile();
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setLiveData((prev) => ({
@@ -93,7 +245,6 @@ const FinPickPremiumMap = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 로딩 진행률 애니메이션
   useEffect(() => {
     if (isLoading) {
       const interval = setInterval(() => {
@@ -108,189 +259,13 @@ const FinPickPremiumMap = () => {
     }
   }, [isLoading]);
 
-  // 채팅 자동 스크롤
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // 🔥 추가: 사용자 프로필 로딩
-  useEffect(() => {
-    const loadUserProfile = async () => {
-      try {
-        // user prop이 없으므로, 항상 로딩 시도 (혹은 필요에 따라 조건 추가)
-        console.log("👤 사용자 프로필 로딩 시작");
-        const profile =
-          await SmartRecommendationService.getComprehensiveUserProfile();
-        setUserProfile(profile);
-        setDataSourceInfo(profile?.dataSource);
-        console.log("✅ 사용자 프로필 로딩 완료:", profile);
-      } catch (error) {
-        console.error("❌ 사용자 프로필 로딩 실패:", error);
-      }
-    };
-    loadUserProfile();
-  }, []); // user prop이 없으므로 빈 배열로 설정, 필요 시 user state 추가
-
-  // --- Constant Data ---
-  // 🎯 금융 도메인별 허브 데이터 - 2개 도메인으로 단순화
-  const financialHubs = [
-    {
-      name: "예금/적금",
-      description: "안전한 저축상품",
-      x: 35, // 좀 더 가운데로 이동
-      y: 40,
-      color: "#3B82F6", // 파란색 유지
-      size: "large",
-      products: 296, // 140(예금) + 156(적금)
-      avgRate: 3.2,
-      riskLevel: "낮음",
-      keywords: [
-        "안전",
-        "저축",
-        "적금",
-        "예금",
-        "안정",
-        "보장",
-        "목돈",
-        "모으기",
-      ],
-    },
-    {
-      name: "대출상품",
-      description: "자금조달 솔루션",
-      x: 65, // 좀 더 가운데로 이동
-      y: 40,
-      color: "#F59E0B", // 주황색 유지
-      size: "large",
-      products: 83, // 44(신용대출) + 39(주택담보대출)
-      avgRate: 4.1,
-      riskLevel: "해당없음",
-      keywords: [
-        "대출",
-        "신용대출",
-        "주택담보",
-        "자금",
-        "대여",
-        "론",
-        "빌리기",
-        "융자",
-      ],
-    },
-  ];
-
-  // 핀 타입별 스타일
-  const pinStyles = {
-    deposit: {
-      color: "#3B82F6",
-      icon: Shield,
-      name: "예금",
-      bgGlow: "shadow-blue-500/20",
-    },
-    savings: {
-      color: "#10B981",
-      icon: PiggyBank,
-      name: "적금",
-      bgGlow: "shadow-emerald-500/20",
-    },
-    investment: {
-      // Keep investment for mapping but will not be used for display
-      color: "#8B5CF6",
-      icon: TrendingUp,
-      name: "투자",
-      bgGlow: "shadow-purple-500/20",
-    },
-    loan: {
-      color: "#F59E0B",
-      icon: Home,
-      name: "대출",
-      bgGlow: "shadow-amber-500/20",
-    },
-  };
-
-  // 🏦 도메인별 샘플 상품 데이터 (폴백용)
-  const sampleProducts = {
-    "예금/적금": [
-      {
-        id: 1,
-        name: "KB국민은행 정기적금",
-        type: "savings",
-        rate: 3.5,
-        minAmount: 10,
-        suitability: 98,
-        reason: "높은 금리, 낮은 위험도",
-        monthlyAmount: 50,
-        bank: "KB국민은행",
-        domain: "예금/적금",
-      },
-      {
-        id: 2,
-        name: "신한 쌓이는적금",
-        type: "savings",
-        rate: 3.2,
-        minAmount: 1,
-        suitability: 92,
-        reason: "낮은 최소금액, 높은 안정성",
-        monthlyAmount: 30,
-        bank: "신한은행",
-        domain: "예금/적금",
-      },
-      {
-        id: 3,
-        name: "우리 WON정기예금",
-        type: "deposit",
-        rate: 3.8,
-        minAmount: 50,
-        suitability: 88,
-        reason: "업계 최고 예금금리",
-        monthlyAmount: 0,
-        bank: "우리은행",
-        domain: "예금/적금",
-      },
-      // 기존 투자상품 샘플 데이터 일부를 예금/적금으로 이동 가능
-      {
-        id: 4,
-        name: "미래에셋 배당플러스",
-        type: "deposit", // Changed to deposit
-        rate: 4.2,
-        minAmount: 50,
-        suitability: 85,
-        reason: "안정적 배당수익 기대",
-        monthlyAmount: 0,
-        bank: "미래에셋",
-        domain: "예금/적금",
-      },
-    ],
-    대출상품: [
-      {
-        id: 6,
-        name: "KB 신용대출",
-        type: "loan",
-        rate: 4.2,
-        minAmount: 100,
-        suitability: 88,
-        reason: "낮은 금리, 빠른 승인",
-        monthlyAmount: 0,
-        bank: "KB국민은행",
-        domain: "대출상품",
-      },
-      {
-        id: 7,
-        name: "하나 주택담보대출",
-        type: "loan",
-        rate: 3.8,
-        minAmount: 1000,
-        suitability: 90,
-        reason: "최저 금리 주택담보",
-        monthlyAmount: 0,
-        bank: "하나은행",
-        domain: "대출상품",
-      },
-    ],
-  };
-
-  // --- Helper Functions ---
+  // --- Constants ---
   // 🔧 백엔드 상품 타입을 프론트엔드 타입으로 매핑
   const mapProductType = (backendType) => {
     const typeMap = {
@@ -306,125 +281,17 @@ const FinPickPremiumMap = () => {
       주택담보대출: "loan",
       마이너스대출: "loan",
       대출: "loan",
-
-      // 투자상품 관련 매핑 삭제
     };
     return typeMap[backendType] || "savings"; // 기본값
   };
 
-  // 🔧 상품 유형을 기반으로 도메인 추론 - 🔥 오류 수정
+  // 🔧 상품 유형을 기반으로 도메인 추론
   const inferDomain = (productType) => {
     if (!productType || typeof productType !== "string") {
       return "예금/적금"; // 기본값
     }
 
     const type = productType.toLowerCase();
-
-    // 대출 관련 키워드 체크
-    const loanKeywords = [
-      "대출",
-      "loan",
-      "신용대출",
-      "주택담보대출",
-      "마이너스대출",
-    ];
-    if (loanKeywords.some((keyword) => type.includes(keyword))) {
-      return "대출상품";
-    }
-
-    // 예금/적금 관련은 기본값
-    return "예금/적금";
-  };
-
-  // 🔧 월 납입액 추정 함수도 수정
-  const estimateMonthlyAmount = (product) => {
-    // 백엔드 응답 구조에 맞게 수정
-    const minAmount = product.minimum_amount || 100000;
-    if (minAmount >= 10000000) return 0; // 대출은 월 납입이 없을 수 있음
-    return Math.max(1, Math.floor(minAmount / 10000 / 10));
-  };
-
-  // 🎯 도메인 기반 핀 위치 생성 - 🔥 안전성 강화
-  const generatePinPositions = (products) => {
-    if (!Array.isArray(products)) {
-      console.error(
-        "❌ generatePinPositions: products가 배열이 아님:",
-        products
-      );
-      return [];
-    }
-
-    return products.map((product) => {
-      try {
-        // 백엔드에서 받은 product.type을 inferDomain으로 전달
-        const inferredDomainName = inferDomain(product.type);
-        const hub =
-          financialHubs.find((h) => h.name === inferredDomainName) ||
-          financialHubs[0]; // 기본값으로 첫 번째 허브 사용
-
-        return {
-          ...product,
-          x: hub.x + (Math.random() - 0.5) * 15,
-          y: hub.y + (Math.random() - 0.5) * 15,
-        };
-      } catch (error) {
-        console.error("❌ 핀 위치 생성 오류:", error, product);
-        // 오류 시 기본 위치 반환
-        return {
-          ...product,
-          x: financialHubs[0].x + (Math.random() - 0.5) * 15,
-          y: financialHubs[0].y + (Math.random() - 0.5) * 15,
-        };
-      }
-    });
-  };
-
-  // 핀 드롭 애니메이션
-  const dropPins = (products) => {
-    setPins([]); // Clear existing pins before dropping new ones
-
-    products.forEach((product, index) => {
-      setTimeout(() => {
-        const newPin = {
-          ...product,
-          animation: "drop",
-          id: product.id + Date.now() + index, // Ensure unique ID for animation
-        };
-
-        setPins((prevPins) => [...prevPins, newPin]);
-
-        // 핑 애니메이션 효과
-        setTimeout(() => {
-          const pingElement = document.createElement("div");
-          pingElement.className =
-            "absolute w-20 h-20 border-2 border-emerald-400 rounded-full animate-ping opacity-75";
-          pingElement.style.left = `${newPin.x}%`;
-          pingElement.style.top = `${newPin.y}%`;
-          pingElement.style.transform = "translate(-50%, -50%)";
-          pingElement.style.pointerEvents = "none";
-          mapRef.current?.appendChild(pingElement);
-
-          setTimeout(() => pingElement.remove(), 2000);
-        }, 500);
-
-        // 바운스 효과
-        setTimeout(() => {
-          setPins((prevPins) =>
-            prevPins.map((pin) =>
-              pin.id === newPin.id ? { ...pin, animation: "bounce" } : pin
-            )
-          );
-        }, 700);
-      }, index * 500); // Staggered drop effect
-    });
-  };
-
-  // 🔄 폴백 함수 (서버 미연결 시 더미 데이터 사용)
-  const handleFallbackRecommendation = async (query) => {
-    console.log("🔄 폴백 모드: 더미 데이터 사용");
-
-    const input = query.toLowerCase();
-    let selectedDomainName = "예금/적금"; // 기본값
 
     // 대출 관련 키워드 체크
     const loanKeywords = [
@@ -437,35 +304,15 @@ const FinPickPremiumMap = () => {
       "자금",
       "론",
     ];
-    if (loanKeywords.some((keyword) => input.includes(keyword))) {
-      selectedDomainName = "대출상품";
+    if (loanKeywords.some((keyword) => type.includes(keyword))) {
+      return "대출상품";
     }
-    // 예금/적금은 기본값이므로 별도 체크 불필요
 
-    const products =
-      sampleProducts[selectedDomainName] || sampleProducts["예금/적금"];
-
-    setTimeout(() => {
-      setIsLoading(false);
-
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: "ai",
-        content: `🎯 ${selectedDomainName} 영역에서 ${
-          products.length
-        }개의 상품을 발견했어요! ${!serverConnected ? "(데모 모드)" : ""} 📍`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-
-      setTimeout(() => {
-        dropPins(products);
-      }, 1000);
-    }, 2500); // Simulate API delay
+    // 예금/적금 관련은 기본값
+    return "예금/적금";
   };
 
-  // 🔧 백엔드 데이터를 프론트엔드 형식으로 변환 - 🔥 새로운 AI 응답 구조 대응
+  // 🔧 백엔드 데이터를 프론트엔드 형식으로 변환
   const convertBackendProducts = (products) => {
     if (!Array.isArray(products)) {
       console.error("❌ products가 배열이 아님:", products);
@@ -489,7 +336,7 @@ const FinPickPremiumMap = () => {
           id: product.product_id || `product_${Date.now()}_${index}`,
           name: product.name || "상품명 미제공",
           type: mapProductType(product.type || "savings"),
-          rate: product.interest_rate || 0,
+          rate: parseFloat(product.interest_rate || 0),
           minAmount: Math.floor(
             (product.conditions?.minimum_amount || 100000) / 10000
           ),
@@ -518,7 +365,7 @@ const FinPickPremiumMap = () => {
           id: `error_product_${Date.now()}_${index}`,
           name: "상품 정보 오류",
           type: "savings",
-          rate: 0,
+          rate: 0.0,
           minAmount: 10,
           suitability: 50,
           reason: "상품 정보를 불러오는데 오류가 발생했습니다.",
@@ -530,7 +377,393 @@ const FinPickPremiumMap = () => {
     });
   };
 
-  // 🤖 메인 API 연동 메시지 처리 함수 - 🔥 데이터 추출 경로 수정
+  // 🔄 폴백 함수 (서버 미연결 시 더미 데이터 사용)
+  const handleFallbackRecommendation = async (query) => {
+    console.log("🔄 폴백 모드: 더미 데이터 사용");
+
+    const input = query.toLowerCase();
+    let selectedDomainName = "예금/적금"; // 기본값
+
+    // 대출 관련 키워드 체크
+    const loanKeywords = [
+      "대출",
+      "빌리",
+      "급전",
+      "필요",
+      "융통",
+      "살려",
+      "자금",
+      "론",
+    ];
+    if (loanKeywords.some((keyword) => input.includes(keyword))) {
+      selectedDomainName = "대출상품";
+    }
+
+    const sampleProducts = {
+      "예금/적금": [
+        {
+          id: "s_1",
+          name: "KB Star 정기적금",
+          type: "savings",
+          rate: 3.5,
+          minAmount: 10,
+          suitability: 95,
+          reason: "높은 금리와 우수한 조건",
+          monthlyAmount: 50,
+          bank: "KB국민은행",
+          domain: "예금/적금",
+        },
+        {
+          id: "s_2",
+          name: "신한 Dream 적금",
+          type: "savings",
+          rate: 3.3,
+          minAmount: 5,
+          suitability: 88,
+          reason: "낮은 최소금액",
+          monthlyAmount: 30,
+          bank: "신한은행",
+          domain: "예금/적금",
+        },
+        {
+          id: "d_1",
+          name: "우리 WON정기예금",
+          type: "deposit",
+          rate: 3.8,
+          minAmount: 100,
+          suitability: 92,
+          reason: "높은 예금금리",
+          monthlyAmount: 0,
+          bank: "우리은행",
+          domain: "예금/적금",
+        },
+        {
+          id: "s_3",
+          name: "하나 Premier 적금",
+          type: "savings",
+          rate: 3.4,
+          minAmount: 20,
+          suitability: 85,
+          reason: "프리미엄 혜택",
+          monthlyAmount: 40,
+          bank: "하나은행",
+          domain: "예금/적금",
+        },
+        {
+          id: "d_2",
+          name: "NH농협 스마트 정기예금",
+          type: "deposit",
+          rate: 3.6,
+          minAmount: 50,
+          suitability: 80,
+          reason: "스마트 뱅킹 전용",
+          monthlyAmount: 0,
+          bank: "NH농협은행",
+          domain: "예금/적금",
+        },
+        {
+          id: "s_4",
+          name: "카카오뱅크 자유적금",
+          type: "savings",
+          rate: 3.2,
+          minAmount: 1,
+          suitability: 75,
+          reason: "자유로운 납입",
+          monthlyAmount: 10,
+          bank: "카카오뱅크",
+          domain: "예금/적금",
+        },
+      ],
+      대출상품: [
+        {
+          id: "l_1",
+          name: "KB Star 신용대출",
+          type: "loan",
+          rate: 4.2,
+          minAmount: 100,
+          suitability: 93,
+          reason: "낮은 금리",
+          monthlyAmount: 0,
+          bank: "KB국민은행",
+          domain: "대출상품",
+        },
+        {
+          id: "l_2",
+          name: "하나 주택담보대출",
+          type: "loan",
+          rate: 3.8,
+          minAmount: 1000,
+          suitability: 90,
+          reason: "최저 금리 주택담보",
+          monthlyAmount: 0,
+          bank: "하나은행",
+          domain: "대출상품",
+        },
+        {
+          id: "l_3",
+          name: "신한 마이너스 대출",
+          type: "loan",
+          rate: 4.5,
+          minAmount: 50,
+          suitability: 85,
+          reason: "편리한 사용",
+          monthlyAmount: 0,
+          bank: "신한은행",
+          domain: "대출상품",
+        },
+        {
+          id: "l_4",
+          name: "우리 비상금 대출",
+          type: "loan",
+          rate: 5.0,
+          minAmount: 10,
+          suitability: 78,
+          reason: "간편한 신청",
+          monthlyAmount: 0,
+          bank: "우리은행",
+          domain: "대출상품",
+        },
+        {
+          id: "l_5",
+          name: "농협 올원 마이너스론",
+          type: "loan",
+          rate: 4.7,
+          minAmount: 30,
+          suitability: 82,
+          reason: "모바일 전용",
+          monthlyAmount: 0,
+          bank: "NH농협은행",
+          domain: "대출상품",
+        },
+      ],
+    };
+
+    // 현재 쿼리에 해당하는 도메인의 상품을 가져옵니다.
+    // 도메인에 상품이 5개 미만일 경우, 적합도 높은 순으로 5개를 채워 넣거나, 있는 만큼만 사용합니다.
+    let products = sampleProducts[selectedDomainName] || [];
+    // 적합도 순으로 정렬하여 상위 5개를 선택 (또는 있는 만큼)
+    products.sort((a, b) => b.suitability - a.suitability);
+    products = products.slice(0, 5); // 최대 5개 상품만 사용
+
+    setTimeout(() => {
+      setIsLoading(false);
+      setOriginalProductsData(products); // 🔥 폴백 데이터도 저장
+
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: `🎯 ${selectedDomainName} 영역에서 ${
+          products.length
+        }개의 상품을 발견했어요! ${!serverConnected ? "(데모 모드)" : ""} 📍`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      setTimeout(() => {
+        const { pins: newPins, lines } = generateFixedConstellation(
+          products,
+          selectedDomainName
+        ); // 고정된 별자리 생성 함수 호출
+        animateConstellationFormation(newPins, lines);
+      }, 1000);
+    }, 2500);
+  };
+
+  // 피드백 제출 함수
+  const handleProductFeedback = async (productId, rating) => {
+    try {
+      if (serverConnected) {
+        const response = await SmartRecommendationService.submitProductFeedback(
+          productId,
+          rating,
+          "사용자가 상품을 선택했습니다."
+        );
+
+        if (response.success) {
+          console.log("✅ 피드백 전송 성공");
+        }
+      }
+    } catch (error) {
+      console.error("❌ 피드백 전송 실패:", error);
+    }
+  };
+
+  // 🔄 연결 재시도 함수
+  const retryConnection = async () => {
+    setIsCheckingConnection(true);
+    setApiError(null);
+
+    const isConnected = await ApiUtils.checkServerConnection();
+    setServerConnected(isConnected);
+    setIsCheckingConnection(false);
+
+    if (isConnected) {
+      console.log("✅ 서버 재연결 성공");
+    }
+  };
+
+  const pinStyles = {
+    deposit: {
+      color: "#3B82F6",
+      icon: Shield,
+      name: "예금",
+      bgGlow: "shadow-blue-500/20",
+      starClass: "main-star",
+    },
+    savings: {
+      color: "#10B981",
+      icon: PiggyBank,
+      name: "적금",
+      bgGlow: "shadow-emerald-500/20",
+      starClass: "bright-star",
+    },
+    loan: {
+      color: "#F59E0B",
+      icon: Home,
+      name: "대출",
+      bgGlow: "shadow-amber-500/20",
+      starClass: "giant-star",
+    },
+  };
+
+  // 🌟 고정된 별자리 생성 알고리즘
+  const generateFixedConstellation = (products, domainName) => {
+    if (!Array.isArray(products) || products.length === 0)
+      return { pins: [], lines: [] };
+
+    console.log(`🎨 고정된 별자리 (${domainName}) 배치 시작`);
+
+    // 해당 도메인에 맞는 별자리 모양 선택
+    const constellationShape =
+      domainName === "대출상품"
+        ? LOAN_CONSTELLATION_SHAPE
+        : SAVINGS_DEPOSIT_CONSTELLATION_SHAPE;
+
+    const constellationPins = [];
+    const constellationLines = [];
+
+    // 상품을 적합도 순으로 정렬 (가장 높은 적합도를 가진 상품이 첫 번째로 오도록)
+    const sortedProducts = [...products].sort(
+      (a, b) => b.suitability - a.suitability
+    );
+
+    // 각 별자리의 point에 상품 매핑
+    constellationShape.points.forEach((point, index) => {
+      const product = sortedProducts[index]; // 적합도 순으로 상품 할당
+
+      if (product) {
+        const pin = {
+          ...product,
+          x: point.x,
+          y: point.y,
+          starMagnitude: calculateStarMagnitude(product),
+          isMainStar: index === 0, // 가장 적합한 상품을 메인 별로
+          isTopRecommended: index === 0, // 첫 번째 상품은 최고 추천
+          fixedPointId: point.id, // 어떤 고정된 포인트에 매핑되었는지
+        };
+        constellationPins.push(pin);
+      }
+    });
+
+    // 연결선 생성
+    constellationShape.connections.forEach((conn) => {
+      const fromPin = constellationPins.find((p) => p.fixedPointId === conn[0]);
+      const toPin = constellationPins.find((p) => p.fixedPointId === conn[1]);
+
+      if (fromPin && toPin) {
+        constellationLines.push({
+          from: fromPin,
+          to: toPin,
+          strength: calculateConnectionStrength(fromPin, toPin),
+          type: getConnectionType(fromPin, toPin),
+        });
+      }
+    });
+
+    console.log(
+      `✨ 배치 완료: ${constellationPins.length}개 핀, ${constellationLines.length}개 연결선`
+    );
+    return { pins: constellationPins, lines: constellationLines };
+  };
+
+  // 🌟 별의 등급 계산 (밝기)
+  const calculateStarMagnitude = (product) => {
+    const rateScore = (product.rate / 5) * 40; // 금리 점수
+    const suitabilityScore = (product.suitability / 100) * 60; // 적합도 점수
+    return Math.min(100, rateScore + suitabilityScore);
+  };
+
+  // 🔗 별자리 연결 여부 판단 (고정된 패턴을 따름) - 이 함수는 이제 사용되지 않음
+  // 🔗 연결선 강도 계산
+  const calculateConnectionStrength = (star1, star2) => {
+    // 적합도 차이가 적을수록 강하게 연결
+    const suitabilityDifference = Math.abs(
+      star1.suitability - star2.suitability
+    );
+    return 1 - suitabilityDifference / 100; // 0 (가장 약함) ~ 1 (가장 강함)
+  };
+
+  // 🔗 연결선 타입 결정
+  const getConnectionType = (star1, star2) => {
+    const strength = calculateConnectionStrength(star1, star2);
+    if (strength > 0.8) return "strong";
+    if (strength > 0.5) return "medium";
+    return "weak";
+  };
+
+  // 🎬 별자리 형성 애니메이션
+  const animateConstellationFormation = (pins, lines) => {
+    setAnimationPhase("forming");
+    setPins([]);
+    setConstellationLines([]);
+
+    // 1단계: 별들이 하나씩 나타남
+    pins.forEach((pin, index) => {
+      setTimeout(() => {
+        setPins((prev) => [...prev, { ...pin, justAppeared: true }]);
+
+        // 반짝임 효과
+        setTimeout(() => {
+          setPins((prev) =>
+            prev.map((p) =>
+              p.id === pin.id ? { ...p, justAppeared: false } : p
+            )
+          );
+        }, 800);
+      }, index * 200);
+    });
+
+    // 2단계: 연결선이 그어짐
+    setTimeout(() => {
+      lines.forEach((line, index) => {
+        setTimeout(() => {
+          setConstellationLines((prev) => [
+            ...prev,
+            { ...line, isDrawing: true },
+          ]);
+
+          setTimeout(() => {
+            setConstellationLines((prev) =>
+              prev.map((l) => (l === line ? { ...l, isDrawing: false } : l))
+            );
+          }, 1000);
+        }, index * 300);
+      });
+    }, pins.length * 200 + 500);
+
+    // 3단계: 완성
+    setTimeout(() => {
+      setAnimationPhase("complete");
+      setLiveData((prev) => ({
+        ...prev,
+        constellationsFormed: prev.constellationsFormed + 1,
+        smartConnections: lines.length,
+      }));
+    }, pins.length * 200 + lines.length * 300 + 2000);
+  };
+
+  // 📡 메인 API 연동 메시지 처리 함수
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -547,6 +780,7 @@ const FinPickPremiumMap = () => {
     setIsLoading(true);
     setLoadingProgress(0);
     setPins([]);
+    setConstellationLines([]);
     setSelectedPin(null);
     setApiError(null);
     setShowChat(false);
@@ -601,27 +835,28 @@ const FinPickPremiumMap = () => {
 
           // 🔥 안전한 변환 함수 사용
           const convertedProducts = convertBackendProducts(products);
+          setOriginalProductsData(convertedProducts); // 🔥 원본 상품 데이터 저장
           console.log("🔄 변환된 상품 데이터:", convertedProducts);
 
           setIsLoading(false);
 
+          // 쿼리를 통해 도메인 추론 (API 응답에서 정확한 도메인 정보가 없을 경우)
+          const inferredDomain = inferDomain(currentQuery);
+
           const aiMessage = {
             id: Date.now() + 1,
             type: "ai",
-            content: `🎯 AI 분석 결과: ${
+            content: `✨ AI 별자리 분석 완료! ${
               convertedProducts.length
-            }개의 맞춤 상품을 발견했어요!
-            
-🔍 분석 기준:
-• 요청 내용: ${currentQuery}
-• 추천 정확도: ${
-              response.data?.ai_insights?.confidence_score
-                ? Math.round(response.data.ai_insights.confidence_score * 100)
-                : "85"
-            }%
-• 맞춤 분석: ${response.data?.user_analysis?.financial_goal || "자금 필요"}
+            }개의 상품으로 스마트 별자리를 구성했습니다.
 
-${!serverConnected ? "(데모 모드)" : ""} 📍`,
+🌟 형성된 별자리: ${
+              inferredDomain === "대출상품"
+                ? LOAN_CONSTELLATION_SHAPE.name
+                : SAVINGS_DEPOSIT_CONSTELLATION_SHAPE.name
+            } (${convertedProducts.length}개 상품)
+
+🔍 분석 기준: 적합도 순으로 정렬되어 가장 적합한 상품들이 주요 별 위치에 배치됩니다.`,
             timestamp: new Date(),
           };
 
@@ -637,7 +872,12 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
           }
 
           setTimeout(() => {
-            dropPins(convertedProducts);
+            // 고정된 별자리 생성 함수 호출 시 추론된 도메인 전달
+            const { pins: newPins, lines } = generateFixedConstellation(
+              convertedProducts,
+              inferredDomain
+            );
+            animateConstellationFormation(newPins, lines);
           }, 1000);
         } else {
           throw new Error(response.message || "추천 요청 실패");
@@ -666,47 +906,177 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
     }
   };
 
-  // 피드백 제출 함수
-  const handleProductFeedback = async (productId, rating) => {
-    try {
-      if (serverConnected) {
-        const response = await SmartRecommendationService.submitProductFeedback(
-          productId,
-          rating,
-          "사용자가 상품을 선택했습니다."
+  // 🌟 별자리 배경
+  const ConstellationBackground = () => (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* 배경 별들 */}
+      {[...Array(40)].map((_, i) => (
+        <div
+          key={i}
+          className="absolute bg-cyan-400 rounded-full animate-pulse"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            width: `${1 + Math.random() * 2}px`,
+            height: `${1 + Math.random() * 2}px`,
+            animationDelay: `${Math.random() * 3}s`,
+            animationDuration: `${2 + Math.random() * 2}s`,
+            opacity: 0.3 + Math.random() * 0.4,
+          }}
+        />
+      ))}
+
+      {/* 성운 효과 */}
+      <div className="absolute inset-0">
+        <div className="absolute top-1/4 left-1/4 w-48 h-32 bg-gradient-radial from-blue-500/10 to-transparent rounded-full blur-3xl" />
+        <div className="absolute bottom-1/3 right-1/4 w-56 h-40 bg-gradient-radial from-emerald-500/10 to-transparent rounded-full blur-3xl" />
+      </div>
+    </div>
+  );
+
+  // 🌟 별자리 연결선 컴포넌트
+  const ConstellationLines = () => (
+    <svg
+      ref={svgRef}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+    >
+      {constellationLines.map((line, index) => {
+        const x1 = `${line.from.x}%`;
+        const y1 = `${line.from.y}%`;
+        const x2 = `${line.to.x}%`;
+        const y2 = `${line.to.y}%`;
+
+        return (
+          <g key={index}>
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={`rgba(6, 182, 212, ${0.3 + line.strength * 0.4})`}
+              strokeWidth={1 + line.strength * 2}
+              className={`transition-all duration-1000 ${
+                line.isDrawing ? "animate-pulse" : ""
+              }`}
+              strokeDasharray={line.isDrawing ? "5,5" : "none"}
+            />
+            {/* 연결점 강도 표시 */}
+            <circle
+              cx={`${(line.from.x + line.to.x) / 2}%`}
+              cy={`${(line.from.y + line.to.y) / 2}%`}
+              r={line.strength * 3}
+              fill="rgba(6, 182, 212, 0.6)"
+              className="animate-pulse"
+            />
+          </g>
         );
+      })}
+    </svg>
+  );
 
-        if (response.success) {
-          console.log("✅ 피드백 전송 성공");
-        }
-      }
-    } catch (error) {
-      console.error("❌ 피드백 전송 실패:", error);
-    }
-  };
+  // 🌟 핀 컴포넌트 (최고 적합도 표시 추가)
+  const Pin = ({ pin, isSelected, onClick }) => {
+    const style = pinStyles[pin.type];
+    const IconComponent = style.icon;
+    const magnitude = pin.starMagnitude || 70;
+    const scale = 0.8 + (magnitude / 100) * 0.4; // 별의 밝기에 따른 크기
 
-  // 핀 클릭 핸들러 (피드백 추가)
-  const handlePinClick = async (pin) => {
-    setSelectedPin(selectedPin?.id === pin.id ? null : pin);
+    return (
+      <div
+        className={`absolute cursor-pointer transform -translate-x-1/2 -translate-y-full transition-all duration-700 ${
+          pin.justAppeared ? "animate-bounce scale-150" : ""
+        } ${isSelected ? "scale-125 z-30" : "hover:scale-110 z-20"}`}
+        style={{
+          left: `${pin.x}%`,
+          top: `${pin.y}%`,
+          transform: `translate(-50%, -100%) scale(${scale})`,
+        }}
+        onClick={() => onClick(pin)}
+      >
+        {/* 최고 적합도 상품 특별 후광 */}
+        {pin.isTopRecommended && (
+          <div
+            className="absolute inset-0 rounded-full blur-xl bg-gradient-to-r from-yellow-400 to-orange-400 opacity-60 animate-pulse"
+            style={{ transform: "scale(2.5)" }}
+          />
+        )}
 
-    // 피드백 전송 (상품 선택 = 긍정적 피드백)
-    if (selectedPin?.id !== pin.id) {
-      await handleProductFeedback(pin.id, 4); // 5점 만점에 4점
-    }
-  };
+        {/* 별 후광 효과 */}
+        <div
+          className={`absolute inset-0 rounded-full blur-lg ${style.bgGlow}`}
+          style={{
+            backgroundColor: style.color,
+            opacity: (magnitude / 100) * 0.6,
+            transform: "scale(1.8)",
+            animation: pin.isMainStar ? "pulse 2s infinite" : "",
+          }}
+        />
 
-  // 🔄 연결 재시도 함수
-  const retryConnection = async () => {
-    setIsCheckingConnection(true);
-    setApiError(null);
+        {/* 메인 별 */}
+        <div
+          className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-2xl border-2 backdrop-blur-sm ${
+            pin.isTopRecommended
+              ? "border-yellow-400/80 ring-4 ring-yellow-400/30"
+              : pin.isMainStar
+              ? "border-white/50 ring-2 ring-cyan-400/30"
+              : "border-white/30"
+          }`}
+          style={{
+            backgroundColor: style.color,
+            boxShadow: `0 0 ${20 + magnitude * 0.3}px ${
+              style.color
+            }40, 0 10px 20px rgba(0,0,0,0.3)`,
+          }}
+        >
+          <IconComponent className="w-7 h-7 text-white drop-shadow-lg" />
 
-    const isConnected = await ApiUtils.checkServerConnection();
-    setServerConnected(isConnected);
-    setIsCheckingConnection(false);
+          {/* 최고 적합도 표시 */}
+          {pin.isTopRecommended && (
+            <div className="absolute -top-3 -left-3 w-6 h-6 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full flex items-center justify-center animate-pulse">
+              <Star className="w-3 h-3 text-white" fill="currentColor" />
+            </div>
+          )}
 
-    if (isConnected) {
-      console.log("✅ 서버 재연결 성공");
-    }
+          {/* 핵심 상품 표시 */}
+          {pin.isMainStar && !pin.isTopRecommended && (
+            <Target
+              className="absolute -top-2 -right-2 w-4 h-4 text-cyan-400 animate-pulse"
+              fill="currentColor"
+            />
+          )}
+        </div>
+
+        {/* 적합도 배지 */}
+        <div
+          className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg backdrop-blur-sm border ${
+            pin.isTopRecommended
+              ? "border-yellow-400/50 bg-gradient-to-r from-yellow-500 to-orange-500"
+              : "border-white/30"
+          }`}
+          style={{
+            background: pin.isTopRecommended
+              ? undefined
+              : `linear-gradient(135deg, ${style.color}, ${style.color}cc)`,
+            boxShadow: `0 4px 15px ${
+              pin.isTopRecommended ? "#f59e0b" : style.color
+            }40`,
+          }}
+        >
+          {pin.suitability}%
+        </div>
+
+        {/* 펄스 애니메이션 (선택 시) */}
+        {isSelected && (
+          <div
+            className="absolute inset-0 rounded-full border-2 animate-ping"
+            style={{
+              borderColor: pin.isTopRecommended ? "#f59e0b" : style.color,
+              transform: "scale(1.8)",
+            }}
+          />
+        )}
+      </div>
+    );
   };
 
   // Enter 키 처리
@@ -717,233 +1087,11 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
     }
   };
 
-  // --- Sub-Components (Render Logic) ---
-  // 🌟 서버 상태 표시 컴포넌트
-  const ServerStatus = () => (
-    <div className="flex items-center space-x-2">
-      {isCheckingConnection ? (
-        <>
-          <RefreshCw className="w-3 h-3 text-yellow-400 animate-spin" />
-          <span className="text-xs text-yellow-400">연결 확인 중...</span>
-        </>
-      ) : (
-        <>
-          <div
-            className={`w-2 h-2 rounded-full animate-pulse ${
-              serverConnected ? "bg-emerald-400" : "bg-red-400"
-            }`}
-          ></div>
-          <span
-            className={`text-xs ${
-              serverConnected ? "text-emerald-400" : "text-red-400"
-            }`}
-          >
-            {serverConnected ? "AI 연결됨" : "데모 모드"}
-          </span>
-        </>
-      )}
-    </div>
-  );
-
-  // 🚨 에러 메시지 컴포넌트
-  const ErrorMessage = ({ error, onRetry }) => (
-    <div className="absolute top-20 left-6 right-6 bg-red-900/80 border border-red-500/50 text-white px-4 py-3 rounded-2xl backdrop-blur-xl z-40">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <AlertTriangle className="w-4 h-4 text-red-400" />
-          <span className="text-sm">API 오류: {error}</span>
-        </div>
-        <button
-          onClick={onRetry}
-          className="text-xs bg-red-600 hover:bg-red-500 px-3 py-1 rounded-lg transition-colors flex items-center space-x-1"
-        >
-          <RefreshCw className="w-3 h-3" />
-          <span>재시도</span>
-        </button>
-      </div>
-    </div>
-  );
-
-  // 별자리 컴포넌트
-  const Constellation = () => (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(25)].map((_, i) => (
-        <div
-          key={i}
-          className="absolute w-1 h-1 bg-cyan-400 rounded-full animate-pulse"
-          style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animationDelay: `${Math.random() * 3}s`,
-            animationDuration: `${2 + Math.random() * 2}s`,
-            opacity: 0.4 + Math.random() * 0.4,
-          }}
-        />
-      ))}
-      <svg className="absolute inset-0 w-full h-full">
-        {[...Array(8)].map((_, i) => (
-          <line
-            key={i}
-            x1={`${Math.random() * 100}%`}
-            y1={`${Math.random() * 100}%`}
-            x2={`${Math.random() * 100}%`}
-            y2={`${Math.random() * 100}%`}
-            stroke="rgba(6, 182, 212, 0.2)"
-            strokeWidth="1"
-            className="animate-pulse"
-          />
-        ))}
-      </svg>
-    </div>
-  );
-
-  // 데이터 스트림 컴포넌트
-  const DataStreams = () => (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(6)].map((_, i) => (
-        <div
-          key={i}
-          className="absolute w-0.5 bg-gradient-to-b from-transparent via-emerald-400 to-transparent animate-pulse"
-          style={{
-            left: `${10 + i * 15}%`,
-            height: "100%",
-            animationDelay: `${i * 0.5}s`,
-            animationDuration: "3s",
-            opacity: 0.3,
-          }}
-        />
-      ))}
-    </div>
-  );
-
-  // 🔥 PersonalizationBadge 컴포넌트 추가
-  const PersonalizationBadge = ({ level }) => {
-    const badges = {
-      none: { text: "일반 추천", color: "bg-gray-600", icon: "🔍" },
-      basic: { text: "기본 맞춤", color: "bg-blue-600", icon: "👤" },
-      low: { text: "부분 맞춤", color: "bg-green-600", icon: "🎯" },
-      medium: { text: "개인화 추천", color: "bg-purple-600", icon: "🧠" },
-      high: { text: "고도 개인화", color: "bg-yellow-600", icon: "⭐" },
-    };
-
-    const badge = badges[level] || badges["basic"];
-
-    return (
-      <div
-        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium text-white ${badge.color}`}
-      >
-        <span className="mr-1">{badge.icon}</span>
-        {badge.text}
-      </div>
-    );
-  };
-
-  // Pin 컴포넌트
-  const Pin = ({ pin, isSelected, onClick }) => {
-    const style = pinStyles[pin.type];
-    const IconComponent = style.icon;
-
-    return (
-      <div
-        className={`absolute cursor-pointer transform -translate-x-1/2 -translate-y-full transition-all duration-500 ${
-          pin.animation === "drop" ? "animate-bounce" : ""
-        } ${isSelected ? "scale-125 z-30" : "hover:scale-110 z-20"}`}
-        style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
-        onClick={() => onClick(pin)}
-      >
-        {/* 글로우 효과 */}
-        <div
-          className={`absolute inset-0 rounded-full blur-lg ${style.bgGlow}`}
-          style={{
-            backgroundColor: style.color,
-            opacity: isSelected ? 0.4 : 0.2,
-            transform: "scale(1.5)",
-          }}
-        />
-
-        {/* 메인 핀 */}
-        <div
-          className="relative w-16 h-16 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-2xl border-3 border-white/20 backdrop-blur-sm"
-          style={{
-            backgroundColor: style.color,
-            boxShadow: `0 0 30px ${style.color}40, 0 10px 20px rgba(0,0,0,0.3)`,
-          }}
-        >
-          <IconComponent className="w-8 h-8 sm:w-7 sm:h-7 text-white drop-shadow-lg" />
-        </div>
-
-        {/* 적합도 배지 */}
-        <div
-          className="absolute -top-3 -right-3 w-10 h-10 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg backdrop-blur-sm border border-white/30"
-          style={{
-            background: `linear-gradient(135deg, ${style.color}, ${style.color}cc)`,
-            boxShadow: `0 4px 15px ${style.color}40`,
-          }}
-        >
-          {pin.suitability}%
-        </div>
-
-        {/* 펄스 애니메이션 */}
-        {isSelected && (
-          <div
-            className="absolute inset-0 rounded-full border-2 animate-ping"
-            style={{
-              borderColor: style.color,
-              transform: "scale(1.5)",
-            }}
-          />
-        )}
-      </div>
-    );
-  };
-
-  // 도메인 허브 컴포넌트
-  const RegionalHub = ({ hub }) => (
-    <div
-      className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-      style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
-    >
-      <div
-        className={`rounded-2xl border-2 border-white/10 backdrop-blur-sm ${
-          hub.size === "large"
-            ? "w-32 h-24"
-            : hub.size === "medium"
-            ? "w-24 h-18"
-            : "w-18 h-14"
-        }`}
-        style={{
-          backgroundColor: `${hub.color}15`,
-          borderColor: `${hub.color}40`,
-        }}
-      >
-        <div className="w-full h-full flex flex-col items-center justify-center p-2">
-          <div
-            className="text-sm font-bold text-white mb-1"
-            style={{ color: hub.color }}
-          >
-            {hub.name}
-          </div>
-          <div className="text-xs text-white/60 text-center leading-tight">
-            {hub.description}
-          </div>
-          <div className="text-xs text-white/40 mt-1">
-            {hub.products}개 상품
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // --- Main Return Statement (JSX) ---
+  // --- Main Return Statement ---
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="w-full max-w-6xl mx-auto bg-gray-950 h-screen flex flex-col overflow-hidden relative">
-        {/* 🚨 에러 메시지 표시 */}
-        {apiError && (
-          <ErrorMessage error={apiError} onRetry={retryConnection} />
-        )}
-
-        {/* 프리미엄 헤더 */}
+        {/* 헤더 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-800/50 backdrop-blur-xl bg-gray-950/80 relative z-30">
           <div className="flex items-center space-x-4">
             <div className="relative">
@@ -973,63 +1121,39 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
               <span className="text-gray-400">상품</span>
             </div>
             <div className="flex items-center space-x-2">
-              <Building className="w-4 h-4 text-cyan-400" />
-              <span className="text-cyan-400 font-semibold">
-                {liveData.institutions}+
+              <Star className="w-4 h-4 text-yellow-400" />
+              <span className="text-yellow-400 font-semibold">
+                {liveData.constellationsFormed}
               </span>
-              <span className="text-gray-400">기관</span>
+              <span className="text-gray-400">그룹</span>
             </div>
             <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-yellow-400" />
-              <span className="text-yellow-400 font-semibold">LIVE</span>
+              <Zap className="w-4 h-4 text-cyan-400" />
+              <span className="text-cyan-400 font-semibold">
+                {liveData.smartConnections}
+              </span>
+              <span className="text-gray-400">연결</span>
             </div>
           </div>
 
-          <button
-            onClick={() => setShowChat(!showChat)}
-            className="relative group"
-          >
-            <div className="w-12 h-12 bg-gradient-to-br from-gray-800 to-gray-700 rounded-xl flex items-center justify-center hover:from-gray-700 hover:to-gray-600 transition-all duration-300 shadow-lg border border-gray-600/50">
-              {showChat ? (
-                <X className="w-6 h-6 text-white" />
-              ) : (
-                <MessageCircle className="w-6 h-6 text-emerald-400" />
-              )}
-            </div>
-            {!showChat && (
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-            )}
-          </button>
+          <div className="flex items-center space-x-2">
+            <Activity className="w-4 h-4 text-yellow-400" />
+            <span className="text-yellow-400 font-semibold">LIVE</span>
+          </div>
         </div>
 
-        {/* 메인 지도 영역 */}
+        {/* 메인 별자리 지도 영역 */}
         <div className="flex-1 relative">
           <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-slate-900 to-gray-950 overflow-hidden">
-            {/* 배경 효과들 */}
-            <Constellation />
-            <DataStreams />
+            {/* 배경 효과 */}
+            <ConstellationBackground />
 
-            {/* 히트맵 그리드 */}
-            <div className="absolute inset-0 opacity-20">
-              <div
-                className="w-full h-full"
-                style={{
-                  backgroundImage: `
-                    radial-gradient(circle at 35% 40%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 65% 40%, rgba(245, 158, 11, 0.3) 0%, transparent 50%)
-                  `,
-                }}
-              ></div>
-            </div>
-
-            {/* 도메인 허브들 */}
-            {financialHubs.map((hub, index) => (
-              <RegionalHub key={index} hub={hub} />
-            ))}
+            {/* 별자리 연결선 */}
+            <ConstellationLines />
 
             {/* 🔥 추가: 사용자 정보 연동 상태 표시 */}
             {userProfile && dataSourceInfo && (
-              <div className="absolute top-6 right-6 z-30">
+              <div className="absolute top-6 left-6 z-30">
                 <div className="bg-gray-900/80 backdrop-blur-xl rounded-2xl p-4 border border-gray-700/50">
                   <div className="flex items-center justify-between mb-2">
                     <PersonalizationBadge level={personalizationLevel} />
@@ -1052,130 +1176,178 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
               </div>
             )}
 
+            {/* 🚨 에러 메시지 표시 */}
+            {apiError && (
+              <ErrorMessage error={apiError} onRetry={retryConnection} />
+            )}
+
             {/* 중앙 안내 메시지 */}
             {pins.length === 0 && !isLoading && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
                 <div className="text-center backdrop-blur-xl bg-black/20 rounded-3xl p-8 border border-white/10">
                   <div className="w-20 h-20 bg-gradient-to-br from-emerald-400/20 to-cyan-400/20 rounded-full flex items-center justify-center mb-6 mx-auto relative">
-                    <MapPin className="w-10 h-10 text-emerald-400" />
+                    <Star className="w-10 h-10 text-emerald-400" />
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full blur-xl opacity-30"></div>
                   </div>
                   <h3 className="text-white text-2xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    AI 금융 도메인 지도
+                    AI 분석 엔진 대기 중
                   </h3>
                   <p className="text-gray-300 text-center leading-relaxed mb-4">
-                    우상단 채팅 버튼을 눌러
+                    원하는 금융상품을 말씀해주세요
                     <br />
-                    원하는 상품을 말해보세요
+                    AI가 스마트 분석을 시작합니다
                   </p>
                   <p className="text-gray-500 text-sm">
-                    {serverConnected
-                      ? "AI가 실시간으로 최적의"
-                      : "데모 모드로 샘플"}
+                    🔍 적합도 기반 그룹핑
                     <br />
-                    금융상품을 도메인별로 표시합니다
+                    🔗 자동 연결선 생성
+                    <br />
+                    🎯 맞춤형 추천
                   </p>
                 </div>
               </div>
             )}
 
-            {/* 프리미엄 로딩 상태 */}
+            {/* 고급 로딩 상태 */}
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center backdrop-blur-xl bg-black/40">
                 <div className="text-center backdrop-blur-xl bg-gray-900/80 rounded-3xl p-8 border border-gray-700/50">
-                  <div className="relative w-20 h-20 mx-auto mb-6">
+                  <div className="relative w-24 h-24 mx-auto mb-6">
+                    {/* 다중 회전 로더 */}
                     <div className="absolute inset-0 border-4 border-emerald-400/30 rounded-full"></div>
-                    <div className="absolute inset-0 border-4 border-transparent border-t-emerald-400 rounded-full animate-spin"></div>
-                    <div className="absolute inset-2 border-4 border-transparent border-t-cyan-400 rounded-full animate-spin animation-reverse"></div>
+                    <div className="absolute inset-1 border-4 border-transparent border-t-emerald-400 rounded-full animate-spin"></div>
+                    <div
+                      className="absolute inset-3 border-4 border-transparent border-t-cyan-400 rounded-full animate-spin"
+                      style={{ animationDuration: "1.5s" }}
+                    ></div>
+                    <div
+                      className="absolute inset-6 border-2 border-transparent border-t-yellow-400 rounded-full animate-spin"
+                      style={{ animationDuration: "2s" }}
+                    ></div>
+
+                    {/* 중앙 별 */}
+                    <div className="absolute inset-8 flex items-center justify-center">
+                      <Star className="w-4 h-4 text-white animate-pulse" />
+                    </div>
                   </div>
 
                   <h3 className="text-white text-xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                    {serverConnected
-                      ? "AI 분석 진행 중..."
-                      : "데모 분석 진행 중..."}
+                    AI 분석 중...
                   </h3>
 
-                  <div className="w-48 h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
+                  <div className="w-56 h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
                     <div
                       className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300"
                       style={{ width: `${loadingProgress}%` }}
                     ></div>
                   </div>
 
-                  <p className="text-gray-300 text-sm">
-                    {loadingProgress < 30
-                      ? serverConnected
-                        ? "AI 키워드 분석 중..."
-                        : "키워드 분석 중..."
-                      : loadingProgress < 60
-                      ? "도메인 매칭 중..."
-                      : loadingProgress < 90
-                      ? "상품 필터링 중..."
-                      : "결과 준비 중..."}
+                  <p className="text-gray-300 text-sm mb-3">
+                    {loadingProgress < 25
+                      ? "🔍 상품 데이터 분석 중..."
+                      : loadingProgress < 50
+                      ? "🎯 맞춤 패턴 생성 중..."
+                      : loadingProgress < 75
+                      ? "🔗 연관성 분석 중..."
+                      : "✨ 결과 준비 중..."}
                   </p>
+
+                  {/* 애니메이션 단계 표시 */}
+                  <div className="flex justify-center space-x-2">
+                    {["분석", "패턴", "연결", "완성"].map((step, index) => (
+                      <div
+                        key={step}
+                        className={`px-2 py-1 rounded text-xs ${
+                          loadingProgress > index * 25
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-gray-700/50 text-gray-500"
+                        }`}
+                      >
+                        {step}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* 핀들 */}
+            {/* 별들 (핀들) */}
             <div ref={mapRef} className="relative w-full h-full">
               {pins.map((pin) => (
                 <Pin
                   key={pin.id}
                   pin={pin}
                   isSelected={selectedPin?.id === pin.id}
-                  onClick={handlePinClick}
+                  onClick={(pin) =>
+                    setSelectedPin(selectedPin?.id === pin.id ? null : pin)
+                  }
                 />
               ))}
             </div>
 
-            {/* 상품 발견 카운터 */}
-            {pins.length > 0 && (
-              <div className="absolute top-6 left-6 backdrop-blur-xl bg-gradient-to-r from-emerald-400/20 to-cyan-400/20 border border-emerald-400/30 text-white px-6 py-3 rounded-2xl shadow-2xl">
+            {/* 분석 완성 알림 */}
+            {animationPhase === "complete" && pins.length > 0 && (
+              <div className="absolute top-6 left-1/2 transform -translate-x-1/2 backdrop-blur-xl bg-gradient-to-r from-emerald-400/20 to-cyan-400/20 border border-emerald-400/30 text-white px-6 py-4 rounded-2xl shadow-2xl animate-fade-in">
                 <div className="flex items-center space-x-3">
-                  <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-                  <span className="font-bold text-lg">
-                    {pins.length}개 발견
-                  </span>
-                  <Sparkles className="w-5 h-5 text-yellow-400" />
-                  {serverConnected && (
-                    <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded-lg">
-                      AI
-                    </span>
-                  )}
+                  <Target className="w-5 h-5 text-yellow-400 animate-pulse" />
+                  <div>
+                    <div className="font-bold text-lg">분석 완성!</div>
+                    <div className="text-sm text-gray-300">
+                      {pins.length}개 상품 • {constellationLines.length}개 연결
+                    </div>
+                  </div>
+                  <Sparkles className="w-5 h-5 text-cyan-400" />
                 </div>
               </div>
             )}
 
-            {/* 지도 범례 */}
+            {/* 상품 분포 범례 */}
             {pins.length > 0 && (
               <div className="absolute bottom-6 left-6 backdrop-blur-xl bg-black/40 border border-gray-700/50 rounded-2xl p-4">
-                <h4 className="text-white text-sm font-semibold mb-3">
+                <h4 className="text-white text-sm font-semibold mb-3 flex items-center">
+                  <Eye className="w-4 h-4 mr-2 text-cyan-400" />
                   상품 분포
                 </h4>
                 <div className="space-y-2">
                   {Object.entries(pinStyles).map(([type, style]) => {
-                    // Only show deposit, savings, and loan if they are present in pins
-                    if (type === "investment") return null; // Remove investment from legend
                     const count = pins.filter(
                       (pin) => pin.type === type
                     ).length;
                     if (count === 0) return null;
 
+                    const mainStars = pins.filter(
+                      (pin) => pin.type === type && pin.isMainStar
+                    ).length;
+                    const topRecommended = pins.filter(
+                      (pin) => pin.type === type && pin.isTopRecommended
+                    ).length;
+
                     return (
                       <div
                         key={type}
-                        className="flex items-center space-x-2 text-xs"
+                        className="flex items-center justify-between text-xs"
                       >
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: style.color }}
-                        ></div>
-                        <span className="text-gray-300">{style.name}</span>
-                        <span className="text-gray-500">({count})</span>
+                        <div className="flex items-center space-x-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: style.color }}
+                          ></div>
+                          <span className="text-gray-300">{style.name}</span>
+                        </div>
+                        <div className="text-gray-500">
+                          {count}개{" "}
+                          {topRecommended > 0 && `(최고 ${topRecommended})`}{" "}
+                          {mainStars > 0 && `(핵심 ${mainStars})`}
+                        </div>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* 연결선 범례 */}
+                <div className="mt-3 pt-2 border-t border-gray-700/30">
+                  <div className="text-xs text-gray-400 mb-1">연결 기준</div>
+                  <div className="text-xs text-cyan-300">적합도 유사성</div>
                 </div>
               </div>
             )}
@@ -1183,24 +1355,23 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
 
           {/* 채팅 오버레이 */}
           {showChat && (
-            <div className="absolute inset-0 backdrop-blur-xl bg-black/50 z-20 flex flex-col">
+            <div className="absolute inset-0 backdrop-blur-xl bg-black/50 z-40 flex flex-col">
+              {/* 채팅 헤더 */}
               <div className="backdrop-blur-xl bg-gray-950/90 border-b border-gray-700/50 p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-2 h-2 rounded-full animate-pulse ${
-                        serverConnected ? "bg-emerald-400" : "bg-yellow-400"
-                      }`}
-                    ></div>
-                    <h2 className="text-white font-bold text-lg">
-                      {serverConnected ? "AI 상담사" : "AI 상담사 (데모)"}
-                    </h2>
+                    <div className="w-2 h-2 rounded-full animate-pulse bg-emerald-400"></div>
+                    <h2 className="text-white font-bold text-lg">AI 상담사</h2>
+                    <div className="px-2 py-1 bg-emerald-500/20 rounded-lg">
+                      <span className="text-emerald-300 text-xs">Beta</span>
+                    </div>
                   </div>
+                  {/* 닫기 버튼 */}
                   <button
                     onClick={() => setShowChat(false)}
-                    className="w-10 h-10 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl flex items-center justify-center transition-colors backdrop-blur-sm border border-gray-600/30"
+                    className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-800/50"
                   >
-                    <X className="w-5 h-5 text-white" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -1215,14 +1386,16 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
                     }`}
                   >
                     <div
-                      className={`max-w-[70%] p-3 rounded-lg shadow-md ${
+                      className={`max-w-[75%] p-4 rounded-2xl shadow-md ${
                         message.type === "user"
-                          ? "bg-emerald-600 text-white rounded-br-none"
-                          : "bg-gray-800 text-gray-200 rounded-bl-none"
+                          ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-br-md"
+                          : "bg-gray-800/80 text-gray-200 rounded-bl-md border border-gray-700/50"
                       }`}
                     >
-                      <p className="text-sm break-words">{message.content}</p>
-                      <span className="text-xs text-white/60 mt-1 block text-right">
+                      <p className="text-sm break-words leading-relaxed whitespace-pre-line">
+                        {message.content}
+                      </p>
+                      <span className="text-xs text-white/60 mt-2 block text-right">
                         {message.timestamp.toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -1231,98 +1404,169 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
                     </div>
                   </div>
                 ))}
-                <div ref={messagesEndRef} /> {/* For auto-scrolling */}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* 채팅 입력 */}
-              <div className="p-4 border-t border-gray-700/50 backdrop-blur-xl bg-gray-950/90 flex items-center space-x-3">
-                <textarea
-                  className="flex-1 bg-gray-800 text-white rounded-lg p-3 resize-none focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-gray-500 text-sm custom-scrollbar"
-                  rows="1"
-                  placeholder={
-                    isLoading ? "AI 분석 중..." : "금융 상품을 검색해보세요..."
-                  }
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={isLoading}
-                ></textarea>
-                <button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputValue.trim()}
-                  className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-6 h-6 text-white" />
-                </button>
+              <div className="p-4 border-t border-gray-700/50 backdrop-blur-xl bg-gray-950/90">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-1">
+                    <textarea
+                      className="w-full bg-gray-800/80 text-white rounded-2xl p-4 resize-none focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-gray-500 text-sm border border-gray-700/50 backdrop-blur-sm min-h-[48px]"
+                      rows="2"
+                      placeholder={
+                        isLoading
+                          ? "AI 분석 중..."
+                          : "어떤 금융상품을 찾고 계신가요? (예: 높은 금리 적금, 신용대출)"
+                      }
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={isLoading || !inputValue.trim()}
+                    className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  >
+                    <Send className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+
+                {/* 빠른 입력 버튼 */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[
+                    "높은 금리 적금 찾아줘",
+                    "안전한 예금상품",
+                    "신용대출 추천",
+                    "월 50만원 적금",
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setInputValue(suggestion)}
+                      className="px-3 py-1 bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 text-xs rounded-lg transition-colors"
+                      disabled={isLoading}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
-          {/* 선택된 핀 상세 정보 */}
+          {/* 💬 채팅 플로팅 버튼 */}
+          {!showChat && (
+            <button
+              onClick={() => setShowChat(true)}
+              className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-full flex items-center justify-center shadow-xl hover:from-emerald-400 hover:to-cyan-400 transition-all duration-300 z-50 animate-pulse"
+            >
+              <MessageCircle className="w-8 h-8 text-white" />
+              {/* 새 메시지 알림 점 (필요시) */}
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                <span className="text-xs text-white font-bold">!</span>
+              </div>
+            </button>
+          )}
+
+          {/* 선택된 별 상세 정보 (개선됨) */}
           {selectedPin && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-xl bg-gray-900/80 border border-gray-700/50 rounded-3xl p-6 shadow-2xl z-50 animate-fade-in-up w-full max-w-sm">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-xl bg-gray-900/90 border border-gray-700/50 rounded-3xl p-6 shadow-2xl z-50 animate-fade-in-up w-full max-w-md">
               <button
                 onClick={() => setSelectedPin(null)}
                 className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
+
+              {/* 별 헤더 */}
               <div className="flex items-center space-x-4 mb-4">
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-                  style={{
-                    backgroundColor: pinStyles[selectedPin.type]?.color,
-                  }}
-                >
-                  {React.createElement(pinStyles[selectedPin.type]?.icon, {
-                    className: "w-6 h-6 text-white",
-                  })}
+                <div className="relative">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    style={{
+                      backgroundColor: pinStyles[selectedPin.type]?.color,
+                    }}
+                  >
+                    {React.createElement(pinStyles[selectedPin.type]?.icon, {
+                      className: "w-6 h-6 text-white",
+                    })}
+                  </div>
+                  {selectedPin.isMainStar && (
+                    <Star
+                      className="absolute -top-1 -right-1 w-4 h-4 text-yellow-400"
+                      fill="currentColor"
+                    />
+                  )}
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white mb-0.5">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-white mb-1">
                     {selectedPin.name}
                   </h3>
-                  <p className="text-sm text-gray-400">{selectedPin.bank}</p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm text-gray-400">{selectedPin.bank}</p>
+                    {selectedPin.isMainStar && (
+                      <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs rounded-full">
+                        핵심
+                      </span>
+                    )}
+                    {selectedPin.isTopRecommended && (
+                      <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">
+                        최고 추천
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* 상품 정보 그리드 */}
               <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">유형</p>
+                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                  <p className="text-gray-400 mb-1">상품 유형</p>
                   <p className="text-white font-medium">
                     {pinStyles[selectedPin.type]?.name}
                   </p>
                 </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">금리/수익률</p>
+                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                  <p className="text-gray-400 mb-1">추천도</p>
+                  <div className="flex items-center space-x-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Target
+                        key={i}
+                        className={`w-3 h-3 ${
+                          i < Math.floor((selectedPin.starMagnitude || 70) / 20)
+                            ? "text-yellow-400 fill-current"
+                            : "text-gray-600"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                  <p className="text-gray-400 mb-1">금리/수익률</p>
                   <p className="text-emerald-400 font-medium">
-                    {selectedPin.rate}%
+                    {selectedPin.rate.toFixed(2)}%
                   </p>
                 </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">최소 금액</p>
-                  <p className="text-white font-medium">
-                    {selectedPin.minAmount}만원
-                  </p>
-                </div>
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-gray-400">적합도</p>
-                  <p className="text-yellow-400 font-medium">
+                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                  <p className="text-gray-400 mb-1">적합도</p>
+                  <p className="text-cyan-400 font-medium">
                     {selectedPin.suitability}%
                   </p>
                 </div>
-                {selectedPin.monthlyAmount > 0 && (
-                  <div className="bg-gray-800 p-3 rounded-lg col-span-2">
-                    <p className="text-gray-400">월 예상 납입액</p>
-                    <p className="text-white font-medium">
-                      {selectedPin.monthlyAmount}만원
-                    </p>
-                  </div>
-                )}
               </div>
-              <p className="text-gray-300 text-sm leading-relaxed border-t border-gray-700/50 pt-4">
-                <span className="font-semibold text-white">추천 사유: </span>
-                {selectedPin.reason}
-              </p>
+
+              {/* 추천 사유 */}
+              <div className="bg-gray-800/30 p-4 rounded-xl border border-gray-700/30 mb-4">
+                <h4 className="text-white font-semibold mb-2 flex items-center">
+                  <Target className="w-4 h-4 mr-2 text-emerald-400" />
+                  AI 추천 사유
+                </h4>
+                <p className="text-gray-300 text-sm leading-relaxed">
+                  {selectedPin.reason}
+                </p>
+              </div>
 
               {/* 🔥 추가: 추천 이유 표시 */}
               {recommendationReasoning && (
@@ -1408,4 +1652,4 @@ ${!serverConnected ? "(데모 모드)" : ""} 📍`,
   );
 };
 
-export default FinPickPremiumMap;
+export default FinPickConstellationMap;

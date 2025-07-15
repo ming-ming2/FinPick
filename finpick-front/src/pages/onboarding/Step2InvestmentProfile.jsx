@@ -787,8 +787,6 @@ const ModernOnboardingStep2 = () => {
           )}
 
           <button
-            onClick={handleNextQuestion} // handleNextQuestion으로 변경
-            disabled={!isAnswered}
             className={`ml-auto px-8 py-3 rounded-xl font-bold transition-all flex items-center space-x-2 ${
               isAnswered
                 ? "bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 hover:shadow-lg"
