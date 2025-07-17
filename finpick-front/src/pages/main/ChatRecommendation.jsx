@@ -1,6 +1,7 @@
 // finpick-front/src/pages/main/ChatRecommendation.jsx
 
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import {
   Send,
   MessageCircle,
@@ -22,6 +23,8 @@ import {
   Filter,
   BarChart3,
   Compass,
+  Bot,
+  User,
 } from "lucide-react";
 
 // 🔗 API 서비스 import
@@ -30,12 +33,12 @@ import {
   ApiUtils,
 } from "../../services/backendApi";
 
-// 🌟 고정된 별자리 모양 정의 (5개의 별)
-// 각 포인트는 별자리의 상대적인 위치 (0-100%)와 역할 (예: 중심, 외곽)을 정의할 수 있습니다.
+// 🌟 고정된 분석 패턴 정의 (5개의 상품)
+// 각 포인트는 분석 결과의 상대적인 위치 (0-100%)와 역할 (예: 중심, 외곽)을 정의할 수 있습니다.
 const SAVINGS_DEPOSIT_CONSTELLATION_SHAPE = {
-  name: "저축의 별 (오각형)",
+  name: "저축 최적화 패턴",
   points: [
-    { x: 50, y: 30, type: "center", id: "s1" }, // 가장 중요한 별 (가장 적합한 상품)
+    { x: 50, y: 30, type: "center", id: "s1" }, // 가장 중요한 상품 (가장 적합한 상품)
     { x: 30, y: 50, type: "outskirt", id: "s2" },
     { x: 70, y: 50, type: "outskirt", id: "s3" },
     { x: 40, y: 70, type: "outskirt", id: "s4" },
@@ -52,13 +55,13 @@ const SAVINGS_DEPOSIT_CONSTELLATION_SHAPE = {
 };
 
 const LOAN_CONSTELLATION_SHAPE = {
-  name: "대출의 별 (삼각형 + 보조 별)",
+  name: "대출 최적화 패턴",
   points: [
-    { x: 50, y: 35, type: "center", id: "l1" }, // 가장 중요한 별 (가장 적합한 상품)
+    { x: 50, y: 35, type: "center", id: "l1" }, // 가장 중요한 상품 (가장 적합한 상품)
     { x: 30, y: 65, type: "outskirt", id: "l2" },
     { x: 70, y: 65, type: "outskirt", id: "l3" },
-    { x: 40, y: 45, type: "helper", id: "l4" }, // 보조 별
-    { x: 60, y: 45, type: "helper", id: "l5" }, // 보조 별
+    { x: 40, y: 45, type: "helper", id: "l4" }, // 보조 상품
+    { x: 60, y: 45, type: "helper", id: "l5" }, // 보조 상품
   ],
   connections: [
     ["l1", "l2"],
@@ -78,7 +81,7 @@ const FinPickConstellationMap = () => {
       id: 1,
       type: "ai",
       content:
-        "안녕하세요! 원하는 금융상품을 말씀해주세요. AI가 실시간으로 별자리를 구성하여 최적의 상품들을 찾아드릴게요! ✨",
+        "안녕하세요! 원하는 금융상품을 말씀해주세요. AI가 실시간으로 분석하여 최적의 상품들을 찾아드릴게요! ✨",
       timestamp: new Date(),
     },
   ]);
@@ -627,14 +630,14 @@ const FinPickConstellationMap = () => {
     },
   };
 
-  // 🌟 고정된 별자리 생성 알고리즘
+  // 🌟 고정된 분석 패턴 생성 알고리즘
   const generateFixedConstellation = (products, domainName) => {
     if (!Array.isArray(products) || products.length === 0)
       return { pins: [], lines: [] };
 
-    console.log(`🎨 고정된 별자리 (${domainName}) 배치 시작`);
+    console.log(`🎨 최적화 패턴 (${domainName}) 배치 시작`);
 
-    // 해당 도메인에 맞는 별자리 모양 선택
+    // 해당 도메인에 맞는 분석 패턴 선택
     const constellationShape =
       domainName === "대출상품"
         ? LOAN_CONSTELLATION_SHAPE
@@ -648,7 +651,7 @@ const FinPickConstellationMap = () => {
       (a, b) => b.suitability - a.suitability
     );
 
-    // 각 별자리의 point에 상품 매핑
+    // 각 분석 포인트에 상품 매핑
     constellationShape.points.forEach((point, index) => {
       const product = sortedProducts[index]; // 적합도 순으로 상품 할당
 
@@ -658,7 +661,7 @@ const FinPickConstellationMap = () => {
           x: point.x,
           y: point.y,
           starMagnitude: calculateStarMagnitude(product),
-          isMainStar: index === 0, // 가장 적합한 상품을 메인 별로
+          isMainStar: index === 0, // 가장 적합한 상품을 메인으로
           isTopRecommended: index === 0, // 첫 번째 상품은 최고 추천
           fixedPointId: point.id, // 어떤 고정된 포인트에 매핑되었는지
         };
@@ -687,7 +690,7 @@ const FinPickConstellationMap = () => {
     return { pins: constellationPins, lines: constellationLines };
   };
 
-  // 🌟 별의 등급 계산 (밝기)
+  // 🌟 상품 평가 점수 계산 (중요도)
   const calculateStarMagnitude = (product) => {
     const rateScore = (product.rate / 5) * 40; // 금리 점수
     const suitabilityScore = (product.suitability / 100) * 60; // 적합도 점수
@@ -712,18 +715,18 @@ const FinPickConstellationMap = () => {
     return "weak";
   };
 
-  // 🎬 별자리 형성 애니메이션
+  // 🎬 분석 결과 시각화 애니메이션
   const animateConstellationFormation = (pins, lines) => {
     setAnimationPhase("forming");
     setPins([]);
     setConstellationLines([]);
 
-    // 1단계: 별들이 하나씩 나타남
+    // 1단계: 상품들이 하나씩 나타남
     pins.forEach((pin, index) => {
       setTimeout(() => {
         setPins((prev) => [...prev, { ...pin, justAppeared: true }]);
 
-        // 반짝임 효과
+        // 강조 효과
         setTimeout(() => {
           setPins((prev) =>
             prev.map((p) =>
@@ -800,12 +803,31 @@ const FinPickConstellationMap = () => {
             null // userProfile 정보는 서비스 내부에서 처리한다고 가정
           );
 
-        if (response.success) {
-          // 🔥 백엔드 응답 구조 디버깅
-          console.log("🔍 전체 백엔드 응답:", response);
-          console.log("🔍 response.data:", response.data);
+        console.log("🔍 전체 백엔드 응답:", response);
+        console.log("🔍 response.data:", response.data);
 
-          // 🔥 백엔드 응답 구조 분석: response.data가 직접 배열임
+        // 🔥 새로운 로직: AI가 금융 관련 없다고 판단한 경우 (success와 관계없이 먼저 체크)
+        if (response.is_financial_related === false) {
+          console.log("❌ AI가 금융 관련 없는 요청으로 판단");
+
+          setIsLoading(false);
+
+          const aiMessage = {
+            id: Date.now() + 1,
+            type: "ai",
+            content:
+              response.message ||
+              "죄송해요, 저는 대출, 예금, 적금 상품 추천을 도와드리는 AI입니다. 금융 상품에 대해 궁금한 점이 있으시면 언제든 말씀해 주세요! 😊",
+            timestamp: new Date(),
+            isNonFinancialResponse: true, // 🔥 특별 플래그
+          };
+
+          setMessages((prev) => [...prev, aiMessage]);
+          return; // 🔥 여기서 함수 종료
+        }
+
+        if (response.success) {
+          // 🔥 기존 로직: 금융 관련 요청인 경우 정상 처리
           let products = [];
 
           // response.data가 배열인지 확인
@@ -846,17 +868,17 @@ const FinPickConstellationMap = () => {
           const aiMessage = {
             id: Date.now() + 1,
             type: "ai",
-            content: `✨ AI 별자리 분석 완료! ${
+            content: `✨ AI 분석 완료! ${
               convertedProducts.length
-            }개의 상품으로 스마트 별자리를 구성했습니다.
+            }개의 상품으로 스마트 포트폴리오를 구성했습니다.
 
-🌟 형성된 별자리: ${
+🌟 생성된 패턴: ${
               inferredDomain === "대출상품"
                 ? LOAN_CONSTELLATION_SHAPE.name
                 : SAVINGS_DEPOSIT_CONSTELLATION_SHAPE.name
             } (${convertedProducts.length}개 상품)
 
-🔍 분석 기준: 적합도 순으로 정렬되어 가장 적합한 상품들이 주요 별 위치에 배치됩니다.`,
+🔍 분석 기준: 적합도 순으로 정렬되어 가장 적합한 상품들이 주요 위치에 배치됩니다.`,
             timestamp: new Date(),
           };
 
@@ -872,7 +894,7 @@ const FinPickConstellationMap = () => {
           }
 
           setTimeout(() => {
-            // 고정된 별자리 생성 함수 호출 시 추론된 도메인 전달
+            // 고정된 분석 패턴 생성 함수 호출 시 추론된 도메인 전달
             const { pins: newPins, lines } = generateFixedConstellation(
               convertedProducts,
               inferredDomain
@@ -1093,12 +1115,16 @@ const FinPickConstellationMap = () => {
       <div className="w-full max-w-6xl mx-auto bg-gray-950 h-screen flex flex-col overflow-hidden relative">
         {/* 헤더 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-800/50 backdrop-blur-xl bg-gray-950/80 relative z-30">
-          <div className="flex items-center space-x-4">
+          <Link to="/" className="flex items-center space-x-4 cursor-pointer">
             <div className="relative">
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-gray-900 font-bold text-lg">₩</span>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
+                <img
+                  src="/logo.png"
+                  alt="FinPick"
+                  className="w-full h-full object-contain"
+                />
               </div>
-              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl blur opacity-30"></div>
+              <div className="absolute -inset-1 rounded-xl blur opacity-30"></div>
             </div>
             <div>
               <h1 className="text-white font-bold text-xl bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
@@ -1108,7 +1134,7 @@ const FinPickConstellationMap = () => {
                 Premium Financial Intelligence
               </p>
             </div>
-          </div>
+          </Link>
 
           {/* 실시간 지표 + 서버 상태 */}
           <div className="hidden md:flex items-center space-x-6 text-sm">
@@ -1389,18 +1415,38 @@ const FinPickConstellationMap = () => {
                       className={`max-w-[75%] p-4 rounded-2xl shadow-md ${
                         message.type === "user"
                           ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-br-md"
+                          : message.isNonFinancialResponse
+                          ? "bg-amber-500/20 border border-amber-500/30 text-amber-100 rounded-bl-md"
                           : "bg-gray-800/80 text-gray-200 rounded-bl-md border border-gray-700/50"
                       }`}
                     >
-                      <p className="text-sm break-words leading-relaxed whitespace-pre-line">
-                        {message.content}
-                      </p>
-                      <span className="text-xs text-white/60 mt-2 block text-right">
-                        {message.timestamp.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                      <div className="flex items-start space-x-3">
+                        {message.type === "ai" && (
+                          <div
+                            className={`mt-1 ${
+                              message.isNonFinancialResponse
+                                ? "text-amber-300"
+                                : "text-emerald-300"
+                            }`}
+                          >
+                            <Bot className="w-5 h-5" />
+                          </div>
+                        )}
+                        {message.type === "user" && (
+                          <User className="w-5 h-5 mt-1 text-emerald-100" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-sm break-words leading-relaxed whitespace-pre-line">
+                            {message.content}
+                          </p>
+                          <span className="text-xs text-white/60 mt-2 block text-right">
+                            {message.timestamp.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1452,6 +1498,12 @@ const FinPickConstellationMap = () => {
                     </button>
                   ))}
                 </div>
+
+                {/* 🔥 안내 메시지 추가 */}
+                <div className="mt-3 text-xs text-gray-400 text-center">
+                  💡 대출, 예금, 적금 상품 추천을 도와드립니다. 구체적인 조건을
+                  말씀해 주세요!
+                </div>
               </div>
             </div>
           )}
@@ -1470,180 +1522,226 @@ const FinPickConstellationMap = () => {
             </button>
           )}
 
-          {/* 선택된 별 상세 정보 (개선됨) */}
+          {/* 선택된 별 상세 정보 (모바일 최적화) */}
           {selectedPin && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-xl bg-gray-900/90 border border-gray-700/50 rounded-3xl p-6 shadow-2xl z-50 animate-fade-in-up w-full max-w-md">
-              <button
-                onClick={() => setSelectedPin(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="fixed inset-0 backdrop-blur-xl bg-black/50 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+              {/* 모바일: 하단에서 올라오는 시트, 데스크톱: 중앙 모달 */}
+              <div className="w-full max-w-md backdrop-blur-xl bg-gray-900/95 border border-gray-700/50 rounded-t-3xl md:rounded-3xl shadow-2xl animate-slide-up md:animate-fade-in-up max-h-[85vh] md:max-h-[80vh] overflow-hidden flex flex-col">
+                {/* 헤더 - 고정 */}
+                <div className="flex-shrink-0 p-4 border-b border-gray-700/30">
+                  {/* 모바일 드래그 핸들 */}
+                  <div className="md:hidden w-12 h-1 bg-gray-600 rounded-full mx-auto mb-4"></div>
 
-              {/* 별 헤더 */}
-              <div className="flex items-center space-x-4 mb-4">
-                <div className="relative">
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{
-                      backgroundColor: pinStyles[selectedPin.type]?.color,
-                    }}
-                  >
-                    {React.createElement(pinStyles[selectedPin.type]?.icon, {
-                      className: "w-6 h-6 text-white",
-                    })}
-                  </div>
-                  {selectedPin.isMainStar && (
-                    <Star
-                      className="absolute -top-1 -right-1 w-4 h-4 text-yellow-400"
-                      fill="currentColor"
-                    />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold text-white mb-1">
-                    {selectedPin.name}
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    <p className="text-sm text-gray-400">{selectedPin.bank}</p>
-                    {selectedPin.isMainStar && (
-                      <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs rounded-full">
-                        핵심
-                      </span>
-                    )}
-                    {selectedPin.isTopRecommended && (
-                      <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">
-                        최고 추천
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 상품 정보 그리드 */}
-              <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
-                  <p className="text-gray-400 mb-1">상품 유형</p>
-                  <p className="text-white font-medium">
-                    {pinStyles[selectedPin.type]?.name}
-                  </p>
-                </div>
-                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
-                  <p className="text-gray-400 mb-1">추천도</p>
-                  <div className="flex items-center space-x-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Target
-                        key={i}
-                        className={`w-3 h-3 ${
-                          i < Math.floor((selectedPin.starMagnitude || 70) / 20)
-                            ? "text-yellow-400 fill-current"
-                            : "text-gray-600"
-                        }`}
-                      />
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="relative">
+                        <div
+                          className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center shadow-lg"
+                          style={{
+                            backgroundColor: pinStyles[selectedPin.type]?.color,
+                          }}
+                        >
+                          {React.createElement(
+                            pinStyles[selectedPin.type]?.icon,
+                            {
+                              className: "w-5 h-5 md:w-6 md:h-6 text-white",
+                            }
+                          )}
+                        </div>
+                        {selectedPin.isMainStar && (
+                          <Star
+                            className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 text-yellow-400"
+                            fill="currentColor"
+                          />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg md:text-xl font-bold text-white mb-1 truncate">
+                          {selectedPin.name}
+                        </h3>
+                        <div className="flex items-center space-x-2 flex-wrap">
+                          <p className="text-sm text-gray-400 truncate">
+                            {selectedPin.bank}
+                          </p>
+                          {selectedPin.isMainStar && (
+                            <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs rounded-full">
+                              핵심
+                            </span>
+                          )}
+                          {selectedPin.isTopRecommended && (
+                            <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">
+                              최고 추천
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedPin(null)}
+                      className="text-gray-400 hover:text-white transition-colors p-2 -m-2"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
-                  <p className="text-gray-400 mb-1">금리/수익률</p>
-                  <p className="text-emerald-400 font-medium">
-                    {selectedPin.rate.toFixed(2)}%
-                  </p>
-                </div>
-                <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
-                  <p className="text-gray-400 mb-1">적합도</p>
-                  <p className="text-cyan-400 font-medium">
-                    {selectedPin.suitability}%
-                  </p>
-                </div>
-              </div>
 
-              {/* 추천 사유 */}
-              <div className="bg-gray-800/30 p-4 rounded-xl border border-gray-700/30 mb-4">
-                <h4 className="text-white font-semibold mb-2 flex items-center">
-                  <Target className="w-4 h-4 mr-2 text-emerald-400" />
-                  AI 추천 사유
-                </h4>
-                <p className="text-gray-300 text-sm leading-relaxed">
-                  {selectedPin.reason}
-                </p>
-              </div>
+                {/* 스크롤 가능한 콘텐츠 영역 */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* 핵심 정보 그리드 - 2x2 컴팩트 */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                      <p className="text-gray-400 mb-1 text-xs">상품 유형</p>
+                      <p className="text-white font-medium text-sm">
+                        {pinStyles[selectedPin.type]?.name}
+                      </p>
+                    </div>
+                    <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                      <p className="text-gray-400 mb-1 text-xs">추천도</p>
+                      <div className="flex items-center space-x-1">
+                        {[...Array(5)].map((_, i) => (
+                          <Target
+                            key={i}
+                            className={`w-2.5 h-2.5 ${
+                              i <
+                              Math.floor((selectedPin.starMagnitude || 70) / 20)
+                                ? "text-yellow-400 fill-current"
+                                : "text-gray-600"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                      <p className="text-gray-400 mb-1 text-xs">금리/수익률</p>
+                      <p className="text-emerald-400 font-medium text-sm">
+                        {selectedPin.rate.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div className="bg-gray-800/60 p-3 rounded-xl border border-gray-700/30">
+                      <p className="text-gray-400 mb-1 text-xs">적합도</p>
+                      <p className="text-cyan-400 font-medium text-sm">
+                        {selectedPin.suitability}%
+                      </p>
+                    </div>
+                  </div>
 
-              {/* 🔥 추가: 추천 이유 표시 */}
-              {recommendationReasoning && (
-                <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                  <h4 className="text-sm font-semibold text-gray-300 mb-2">
-                    🧠 AI 추천 이유
-                  </h4>
-                  <p className="text-sm text-gray-400">
-                    {recommendationReasoning}
-                  </p>
-                </div>
-              )}
+                  {/* 추천 사유 - 컴팩트 */}
+                  <div className="bg-gray-800/30 p-3 rounded-xl border border-gray-700/30">
+                    <h4 className="text-white font-semibold mb-2 flex items-center text-sm">
+                      <Target className="w-3 h-3 mr-2 text-emerald-400" />
+                      AI 추천 사유
+                    </h4>
+                    <p className="text-gray-300 text-sm leading-relaxed">
+                      {selectedPin.reason}
+                    </p>
+                  </div>
 
-              {/* 🔥 추가: AI 분석 및 사용자 특정 정보 */}
-              {selectedPin?.aiAnalysis && (
-                <div className="mt-4 space-y-3">
-                  {selectedPin.aiAnalysis.expected_benefit && (
-                    <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-700/50">
-                      <h5 className="text-sm font-medium text-blue-300 mb-1">
-                        예상 혜택
-                      </h5>
-                      <p className="text-sm text-gray-300">
-                        {selectedPin.aiAnalysis.expected_benefit}
+                  {/* 🔥 추가: 추천 이유 표시 */}
+                  {recommendationReasoning && (
+                    <div className="p-3 bg-gray-800/50 rounded-xl border border-gray-700/50">
+                      <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
+                        <span className="mr-2">🧠</span>
+                        AI 추천 이유
+                      </h4>
+                      <p className="text-sm text-gray-400 leading-relaxed">
+                        {recommendationReasoning}
                       </p>
                     </div>
                   )}
 
-                  {selectedPin.aiAnalysis.match_reasons &&
-                    selectedPin.aiAnalysis.match_reasons.length > 0 && (
-                      <div className="p-3 bg-green-900/30 rounded-lg border border-green-700/50">
-                        <h5 className="text-sm font-medium text-green-300 mb-2">
-                          추천 이유
-                        </h5>
-                        <ul className="text-sm text-gray-300 space-y-1">
-                          {selectedPin.aiAnalysis.match_reasons.map(
-                            (reason, idx) => (
-                              <li key={idx} className="flex items-start">
-                                <span className="text-green-400 mr-2">•</span>
-                                {reason}
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    )}
+                  {/* 🔥 추가: AI 분석 및 사용자 특정 정보 - 접이식 */}
+                  {selectedPin?.aiAnalysis && (
+                    <div className="space-y-3">
+                      {selectedPin.aiAnalysis.expected_benefit && (
+                        <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-700/50">
+                          <h5 className="text-sm font-medium text-blue-300 mb-1 flex items-center">
+                            <span className="mr-2">💰</span>
+                            예상 혜택
+                          </h5>
+                          <p className="text-sm text-gray-300 leading-relaxed">
+                            {selectedPin.aiAnalysis.expected_benefit}
+                          </p>
+                        </div>
+                      )}
 
-                  {selectedPin.userSpecific && (
-                    <div className="p-3 bg-purple-900/30 rounded-lg border border-purple-700/50">
-                      <h5 className="text-sm font-medium text-purple-300 mb-2">
-                        맞춤 정보
-                      </h5>
-                      <div className="space-y-1 text-sm text-gray-300">
-                        {selectedPin.userSpecific
-                          .recommended_monthly_amount && (
-                          <p>
-                            • 추천 월 납입액:{" "}
-                            {selectedPin.userSpecific.recommended_monthly_amount.toLocaleString()}
-                            원
-                          </p>
+                      {selectedPin.aiAnalysis.match_reasons &&
+                        selectedPin.aiAnalysis.match_reasons.length > 0 && (
+                          <div className="p-3 bg-green-900/30 rounded-lg border border-green-700/50">
+                            <h5 className="text-sm font-medium text-green-300 mb-2 flex items-center">
+                              <span className="mr-2">✅</span>
+                              추천 이유
+                            </h5>
+                            <ul className="text-sm text-gray-300 space-y-1">
+                              {selectedPin.aiAnalysis.match_reasons
+                                .slice(0, 3)
+                                .map((reason, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-green-400 mr-2 flex-shrink-0">
+                                      •
+                                    </span>
+                                    <span className="leading-relaxed">
+                                      {reason}
+                                    </span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
                         )}
-                        {selectedPin.userSpecific.achievement_timeline && (
-                          <p>
-                            • 목표 달성 예상:{" "}
-                            {selectedPin.userSpecific.achievement_timeline}
-                          </p>
-                        )}
-                        {selectedPin.userSpecific.risk_compatibility && (
-                          <p>
-                            • 위험도 적합성:{" "}
-                            {selectedPin.userSpecific.risk_compatibility}
-                          </p>
-                        )}
-                      </div>
+
+                      {selectedPin.userSpecific && (
+                        <div className="p-3 bg-purple-900/30 rounded-lg border border-purple-700/50">
+                          <h5 className="text-sm font-medium text-purple-300 mb-2 flex items-center">
+                            <span className="mr-2">👤</span>
+                            맞춤 정보
+                          </h5>
+                          <div className="space-y-2 text-sm text-gray-300">
+                            {selectedPin.userSpecific
+                              .recommended_monthly_amount && (
+                              <div className="flex justify-between items-center">
+                                <span>추천 월 납입액:</span>
+                                <span className="font-medium text-purple-300">
+                                  {selectedPin.userSpecific.recommended_monthly_amount.toLocaleString()}
+                                  원
+                                </span>
+                              </div>
+                            )}
+                            {selectedPin.userSpecific.achievement_timeline && (
+                              <div className="flex justify-between items-center">
+                                <span>목표 달성 예상:</span>
+                                <span className="font-medium text-purple-300">
+                                  {
+                                    selectedPin.userSpecific
+                                      .achievement_timeline
+                                  }
+                                </span>
+                              </div>
+                            )}
+                            {selectedPin.userSpecific.risk_compatibility && (
+                              <div className="flex justify-between items-center">
+                                <span>위험도 적합성:</span>
+                                <span className="font-medium text-purple-300">
+                                  {selectedPin.userSpecific.risk_compatibility}
+                                </span>
+                              </div>
+                            )}
+                            {selectedPin.userSpecific.age_appropriateness && (
+                              <div className="flex justify-between items-center">
+                                <span>연령 적합성:</span>
+                                <span className="font-medium text-purple-300">
+                                  {selectedPin.userSpecific.age_appropriateness}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  {/* 하단 여백 (모바일에서 스크롤 시 마지막 콘텐츠가 잘리지 않도록) */}
+                  <div className="h-4"></div>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>

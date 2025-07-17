@@ -47,58 +47,66 @@ async def process_natural_language_query(
         service = RecommendationService()
         gemini_service = GeminiService()
         
-        domain = await gemini_service.classify_financial_domain(natural_query)
-        print(f"📊 분류된 도메인: {domain}")
-        
         available_products = service.financial_products
-        dataset = gemini_service.prepare_domain_dataset(available_products, domain)
-        print(f"📦 준비된 데이터셋: {len(dataset['products'])}개 상품")
         
+        # 🔥 AI 관련성 판단을 포함한 추천 요청 시 enhanced_profile 전달
         ai_result = await gemini_service.recommend_financial_model(
             user_query=natural_query,
-            user_profile=enhanced_profile,
+            user_profile=enhanced_profile,  # 🔥 사용자 프로필 전달
             available_products=available_products,
             limit=limit
         )
         
-        # --- 여기부터 디버깅을 위한 추가된 코드입니다 ---
         print(f"💡 DEBUG: Full AI Result from GeminiService: {json.dumps(ai_result, indent=2)}")
-        print(f"💡 DEBUG: Recommended Products from AI Result: {ai_result.get('recommended_products')}")
-        # --- 디버깅 코드 끝 ---
+        
+        # 🔥 관련성 검사 실패한 경우 - 상품 데이터 없이 안내 메시지만 반환
+        if not ai_result.get("is_financial_related", True):
+            print(f"❌ 금융 관련 없는 요청 감지")
+            
+            return {
+                "success": False,
+                "is_financial_related": False,
+                "message": ai_result.get("suggested_response", 
+                    "죄송해요, 저는 대출, 예금, 적금 상품 추천을 도와드리는 AI입니다. 금융 상품에 대해 궁금한 점이 있으시면 언제든 말씀해 주세요! 😊"),
+                "confidence": ai_result.get("confidence", 0),
+                "reason": ai_result.get("reason", ""),
+                "data": [],
+                "timestamp": datetime.now().isoformat()
+            }
 
+        # 🔥 관련성 검사 통과한 경우 - 기존 로직 그대로
         if ai_result.get("success"):
             print("✅ 강화된 사용자 맞춤 금융모델 추천 성공")
             
-            # 🔥 새로운 AI 응답 구조에 맞게 수정
+            # 기존 코드 그대로 유지하되 enhanced_profile 전달
             recommended_products = []
             
             for product_data in ai_result.get("recommended_products", []):
                 print(f"💡 DEBUG: Processing product_data in loop: {product_data}")
                 
-                # 🔥 수정: original_product 없이 직접 product_data 사용
                 if product_data and product_data.get("product_id"):
                     print(f"💡 DEBUG: Found product ID: {product_data.get('product_id')}")
+                    # 🔥 enhanced_profile 전달
                     enhanced_product = _enhance_product_with_user_context_v2(
-                        product_data,  # 직접 전달
-                        enhanced_profile
+                        product_data,
+                        enhanced_profile  # 사용자 프로필 전달
                     )
                     recommended_products.append(enhanced_product)
                 else:
                     print(f"❌ DEBUG: Invalid product_data: {product_data}")
             
-            # --- 여기부터 디버깅을 위한 추가된 코드입니다 ---
             print(f"💡 DEBUG: Final recommended_products list size: {len(recommended_products)}")
             print(f"💡 DEBUG: Final recommended_products list: {json.dumps(recommended_products, indent=2)}")
-            # --- 디버깅 코드 끝 ---
 
             response_data = {
                 "success": True,
+                "is_financial_related": True,
                 "data": recommended_products,
                 "personalization_level": _determine_personalization_level(enhanced_profile),
                 "user_insights": _generate_user_insights(enhanced_profile),
                 "recommendation_reasoning": _generate_recommendation_reasoning(enhanced_profile, recommended_products),
                 "ai_metadata": {
-                    "domain": domain,
+                    "domain": ai_result.get("domain"),
                     "total_products_analyzed": len(available_products),
                     "user_profile_completeness": _calculate_profile_completeness(enhanced_profile),
                     "processing_time": ai_result.get("processing_time", 0)
@@ -108,7 +116,8 @@ async def process_natural_language_query(
             return response_data
         else:
             print("❌ AI 추천 실패, 기본 추천으로 폴백")
-            return await _generate_fallback_recommendations(natural_query, available_products, limit)
+            # 🔥 폴백에도 enhanced_profile 전달
+            return await _generate_fallback_recommendations(natural_query, available_products, limit, enhanced_profile)
             
     except Exception as e:
         print(f"❌ 자연어 추천 처리 실패: {e}")
@@ -142,15 +151,16 @@ async def submit_recommendation_feedback(
             detail="피드백 처리에 실패했습니다."
         )
 
-# === 🔥 새로운 헬퍼 함수 ===
+# === 🔥 새로운 헬퍼 함수 - 사용자 프로필 기반 개선 ===
 
 def _enhance_product_with_user_context_v2(
     product_data: Dict[str, Any], 
     user_profile: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """새로운 AI 응답 구조를 위한 상품 컨텍스트 추가 함수"""
+    """새로운 AI 응답 구조를 위한 상품 컨텍스트 추가 함수 - 사용자 프로필 기반"""
     
-    # 🔥 AI가 이미 완성된 데이터를 주므로 그대로 사용
+    # 🔥 GeminiService에서 이미 사용자 프로필 기반으로 계산된 데이터를 사용
+    # user_specific 정보가 이미 계산되어 있으므로 그대로 사용
     enhanced_product = {
         "product_id": product_data.get('product_id'),
         "name": product_data.get('name'),
@@ -168,15 +178,110 @@ def _enhance_product_with_user_context_v2(
             "expected_benefit": ""
         }),
         
-        # 사용자 특정 정보 그대로 사용
+        # 🔥 사용자 특정 정보 - GeminiService에서 계산된 값 사용
         "user_specific": product_data.get('user_specific', {
-            "recommended_monthly_amount": 300000,
-            "risk_compatibility": "적합",
-            "age_appropriateness": "적합"
+            "recommended_monthly_amount": _estimate_monthly_amount_with_profile(product_data, user_profile),
+            "risk_compatibility": _assess_risk_compatibility_simple(product_data, user_profile),
+            "age_appropriateness": _assess_age_appropriateness_simple(product_data, user_profile)
         })
     }
     
     return enhanced_product
+
+# === 간단한 헬퍼 함수들 (GeminiService 함수들의 단순화 버전) ===
+
+def _estimate_monthly_amount_with_profile(product_data: Dict, user_profile: Optional[Dict]) -> int:
+    """사용자 프로필 기반 월 납입액 추정 - 단순화 버전"""
+    
+    if not user_profile:
+        return 300000  # 기본값
+    
+    basic_info = user_profile.get("basic_info", {})
+    min_amount = product_data.get('conditions', {}).get('minimum_amount', 100000)
+    if isinstance(min_amount, str):
+        try:
+            min_amount = int(min_amount)
+        except:
+            min_amount = 100000
+    
+    base_amount = max(100000, min_amount)
+    
+    # 직업 기반 조정
+    occupation = basic_info.get("occupation", "").lower()
+    if any(job in occupation for job in ["의사", "변호사", "회계사"]):
+        multiplier = 2.0
+    elif any(job in occupation for job in ["공무원", "교사"]):
+        multiplier = 1.5
+    elif any(job in occupation for job in ["학생"]):
+        multiplier = 0.5
+    else:
+        multiplier = 1.0
+    
+    # 연령 기반 조정
+    age = basic_info.get("age", "")
+    if "20" in age:
+        multiplier *= 0.8
+    elif "40" in age or "50" in age:
+        multiplier *= 1.3
+    
+    # 상품 타입별 조정
+    product_type = product_data.get('type', '').lower()
+    if "예금" in product_type:
+        multiplier *= 2.5  # 예금은 목돈
+    elif "대출" in product_type:
+        return 0  # 대출은 월 납입액 없음
+    
+    calculated = int(base_amount * multiplier)
+    return max(100000, min(1000000, calculated))
+
+def _assess_risk_compatibility_simple(product_data: Dict, user_profile: Optional[Dict]) -> str:
+    """간단한 위험도 적합성 평가"""
+    
+    if not user_profile:
+        return "적합"
+    
+    investment_profile = user_profile.get("investment_profile", {})
+    risk_score = investment_profile.get("total_score", 25)
+    
+    product_type = product_data.get('type', '').lower()
+    
+    if any(keyword in product_type for keyword in ["예금", "적금"]):
+        if risk_score <= 20:
+            return "매우 적합"
+        else:
+            return "적합"
+    elif "대출" in product_type:
+        if risk_score <= 20:
+            return "신중히 검토"
+        else:
+            return "적합"
+    
+    return "적합"
+
+def _assess_age_appropriateness_simple(product_data: Dict, user_profile: Optional[Dict]) -> str:
+    """간단한 연령 적합성 평가"""
+    
+    if not user_profile:
+        return "적합"
+    
+    basic_info = user_profile.get("basic_info", {})
+    age = basic_info.get("age", "")
+    product_type = product_data.get('type', '').lower()
+    
+    if "20" in age:
+        if "대출" in product_type:
+            return "신중한 계획 필요"
+        else:
+            return "목돈 마련에 적합"
+    elif "30" in age or "40" in age:
+        return "적합"
+    elif "50" in age or "60" in age:
+        if "대출" in product_type:
+            return "상환 계획 검토"
+        else:
+            return "안정 운용에 적합"
+    
+    return "적합"
 
 # === 기존 헬퍼 함수들 ===
 
@@ -398,8 +503,8 @@ def _calculate_profile_completeness(profile: Dict[str, Any]) -> float:
     
     return completed_fields / total_fields if total_fields > 0 else 0.0
 
-async def _generate_fallback_recommendations(query: str, products: List[Dict], limit: int) -> Dict[str, Any]:
-    """폴백 추천 생성"""
+async def _generate_fallback_recommendations(query: str, products: List[Dict], limit: int, user_profile: Optional[Dict] = None) -> Dict[str, Any]:
+    """폴백 추천 생성 - 사용자 프로필 적용"""
     
     # 간단한 키워드 기반 추천
     keywords = query.lower().split()
@@ -412,9 +517,16 @@ async def _generate_fallback_recommendations(query: str, products: List[Dict], l
         domain = "예금/적금"
         filtered_products = [p for p in products if "예금" in p.get("type", "") or "적금" in p.get("type", "")]
     
-    # 상위 몇 개만 선택
+    # 상위 몇 개만 선택하되 사용자 프로필 적용
     recommended_products = []
     for i, product in enumerate(filtered_products[:limit]):
+        # 🔥 사용자 프로필 기반 맞춤 정보 계산
+        user_specific_info = {
+            "recommended_monthly_amount": _estimate_monthly_amount_with_profile(product, user_profile),
+            "risk_compatibility": _assess_risk_compatibility_simple(product, user_profile),
+            "age_appropriateness": _assess_age_appropriateness_simple(product, user_profile)
+        }
+        
         recommended_products.append({
             "product_id": product.get("id", f"fallback_{i}"),
             "name": product.get("name", "상품명 없음"),
@@ -429,23 +541,19 @@ async def _generate_fallback_recommendations(query: str, products: List[Dict], l
                 "risk_assessment": "보통",
                 "expected_benefit": "기본 추천 상품"
             },
-            "user_specific": {
-                "recommended_monthly_amount": 300000,
-                "risk_compatibility": "적합",
-                "age_appropriateness": "적합"
-            }
+            "user_specific": user_specific_info  # 🔥 사용자 프로필 기반 정보
         })
     
     return {
         "success": True,
         "data": recommended_products,
-        "personalization_level": "none",
-        "user_insights": {},
+        "personalization_level": _determine_personalization_level(user_profile) if user_profile else "none",
+        "user_insights": _generate_user_insights(user_profile) if user_profile else {},
         "recommendation_reasoning": "키워드 기반 기본 추천",
         "ai_metadata": {
             "domain": domain,
             "total_products_analyzed": len(products),
-            "user_profile_completeness": 0.0,
+            "user_profile_completeness": _calculate_profile_completeness(user_profile) if user_profile else 0.0,
             "processing_time": 0
         }
     }

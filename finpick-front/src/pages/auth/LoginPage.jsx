@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Chrome, MessageCircle, Github, Mail, Lock } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+
 import {
   loginWithGoogle,
   loginWithEmail,
@@ -83,16 +84,21 @@ const LoginPage = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-3 mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-gray-900 font-bold text-2xl">₩</span>
+          <Link to="/" className="items-center cursor-pointer">
+            <div className="flex items-center justify-center space-x-1 mb-6">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
+                <img
+                  src="/logo.png"
+                  alt="FinPick"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div>
+                <div className="text-3xl font-bold">FinPick</div>
+                <div className="text-sm text-gray-400">AI 금융 어드바이저</div>
+              </div>
             </div>
-            <div>
-              <div className="text-3xl font-bold">FinPick</div>
-              <div className="text-sm text-gray-400">AI 금융 어드바이저</div>
-            </div>
-          </div>
-
+          </Link>
           <h1 className="text-2xl font-bold mb-3">
             <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
               {isLogin ? "로그인" : "회원가입"}

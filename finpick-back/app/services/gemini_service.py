@@ -50,6 +50,94 @@ class GeminiService:
         
         print("✅ 2개 도메인 GeminiService 초기화 성공")
     
+    async def is_financial_related_query(self, user_query: str) -> Dict[str, Any]:
+        """사용자 질문이 금융 상품(대출/예금/적금)과 관련있는지 AI가 판단"""
+        
+        try:
+            prompt = f"""
+사용자의 질문이 금융 상품(대출, 예금, 적금)과 관련이 있는지 판단해주세요.
+
+사용자 질문: "{user_query}"
+
+**금융 관련 키워드 예시:**
+- 대출: 대출, 빌리기, 자금조달, 융자, 신용대출, 주택담보대출, 마이너스대출
+- 예금: 예금, 저축, 정기예금, 자유예금, 목돈 만들기, 안전하게 보관
+- 적금: 적금, 정기적금, 자유적금, 매월 넣기, 목표 달성, 적립
+
+**관련 없는 예시:**
+- 일반 대화: 안녕, 날씨, 음식, 연예인, 스포츠, 게임
+- 다른 금융: 주식, 펀드, 부동산, 보험, 카드
+- 기타: 여행, 쇼핑, 취미, 일상 대화
+
+**응답 형식 (JSON만):**
+{{
+    "is_related": true/false,
+    "confidence": 0.0-1.0,
+    "reason": "판단 이유",
+    "suggested_response": "관련 없을 때 사용자에게 보낼 안내 메시지"
+}}
+
+관련 없다고 판단되면 suggested_response에 친근하고 자연스러운 안내 메시지를 포함해주세요.
+"""
+
+            response = await self.model.generate_content_async(prompt)
+            response_text = response.text.strip()
+            
+            # JSON 파싱
+            try:
+                if '```json' in response_text:
+                    response_text = response_text.split('```json')[1].split('```')[0]
+                elif '```' in response_text:
+                    response_text = response_text.split('```')[1]
+                
+                result = json.loads(response_text)
+                
+                print(f"🤖 AI 관련성 판단: {result.get('is_related')} (신뢰도: {result.get('confidence', 0)})")
+                
+                return {
+                    "is_related": result.get("is_related", False),
+                    "confidence": result.get("confidence", 0.0),
+                    "reason": result.get("reason", ""),
+                    "suggested_response": result.get("suggested_response", 
+                        "죄송해요, 저는 대출, 예금, 적금 상품 추천을 도와드리는 AI입니다. 금융 상품에 대해 궁금한 점이 있으시면 언제든 말씀해 주세요! 😊")
+                }
+                
+            except json.JSONDecodeError as e:
+                print(f"❌ AI 응답 JSON 파싱 실패: {e}")
+                print(f"원본 응답: {response_text}")
+                
+                # 폴백: 키워드 기반 간단 판단
+                return self._fallback_relevance_check(user_query)
+                
+        except Exception as e:
+            print(f"❌ AI 관련성 판단 실패: {e}")
+            # 폴백: 키워드 기반 간단 판단
+            return self._fallback_relevance_check(user_query)
+    
+    def _fallback_relevance_check(self, user_query: str) -> Dict[str, Any]:
+        """AI 실패 시 폴백: 키워드 기반 관련성 판단"""
+        
+        financial_keywords = [
+            # 대출 관련
+            "대출", "빌리", "융자", "신용대출", "주택담보", "마이너스대출",
+            # 예금 관련  
+            "예금", "저축", "정기예금", "자유예금", "목돈", "보관",
+            # 적금 관련
+            "적금", "정기적금", "자유적금", "매월", "적립", "목표",
+            # 일반 금융
+            "금리", "이자", "은행", "금융", "투자", "수익"
+        ]
+        
+        query_lower = user_query.lower()
+        is_related = any(keyword in query_lower for keyword in financial_keywords)
+        
+        return {
+            "is_related": is_related,
+            "confidence": 0.7 if is_related else 0.3,
+            "reason": f"키워드 기반 판단: {'관련 키워드 발견' if is_related else '관련 키워드 없음'}",
+            "suggested_response": "죄송해요, 저는 대출, 예금, 적금 상품 추천을 도와드리는 AI입니다. 금융 상품에 대해 궁금한 점이 있으시면 언제든 말씀해 주세요! 😊"
+        }
+
     async def classify_financial_domain(self, user_query: str) -> str:
         """사용자 요구사항을 2개 도메인으로 분류"""
         
@@ -141,7 +229,6 @@ class GeminiService:
         else:  # 대출
             return f"대출 시장 분석: 총 {total_products}개 상품 확인, 다양한 금리 조건과 상환 방식 제공"
 
-    # 🔥 기존 메서드들을 2개 도메인에 맞게 간소화
     async def recommend_financial_model(
         self, 
         user_query: str, 
@@ -149,26 +236,37 @@ class GeminiService:
         available_products: List[Dict] = None, 
         limit: int = 5
     ) -> Dict:
-        """금융모델 기반 추천 - 2개 도메인 버전"""
+        """금융모델 기반 추천 - 관련성 체크 추가"""
         
         try:
             print(f"🚀 금융모델 추천 시작: {user_query}")
             
-            # 1단계: 도메인 분류
+            # 🔥 1단계: 금융 관련성 검증
+            relevance_check = await self.is_financial_related_query(user_query)
+            
+            if not relevance_check.get("is_related", False):
+                print(f"❌ 금융 관련 없는 요청 감지: {relevance_check.get('reason')}")
+                return {
+                    "success": False,
+                    "is_financial_related": False,
+                    "suggested_response": relevance_check.get("suggested_response"),
+                    "confidence": relevance_check.get("confidence", 0),
+                    "reason": relevance_check.get("reason", "")
+                }
+            
+            print("✅ 금융 관련 요청 확인됨, 추천 진행")
+            
+            # 기존 로직 그대로 유지하되 user_profile 전달
             domain = await self.classify_financial_domain(user_query)
-            
-            # 2단계: 데이터셋 준비
             dataset = self.prepare_domain_dataset(available_products or [], domain)
-            
-            # 3단계: 사용자 분석
             user_analysis = await self._analyze_user_requirements_v2(user_query, user_profile, domain)
             
-            # 4단계: 상품 추천
-            recommendations = await self._recommend_products_v2(user_analysis, dataset, limit)
+            # 🔥 user_profile 전달
+            recommendations = await self._recommend_products_v2(user_analysis, dataset, limit, user_profile)
             
-            # 5단계: 결과 구성
             result = {
                 "success": True,
+                "is_financial_related": True,
                 "domain": domain,
                 "user_analysis": user_analysis,
                 "recommended_products": recommendations,
@@ -234,8 +332,8 @@ class GeminiService:
                 }
             }
 
-    async def _recommend_products_v2(self, user_analysis: Dict, dataset: Dict, limit: int) -> List[Dict]:
-        """AI가 전체 상품을 보고 실제로 추천하는 개선된 버전"""
+    async def _recommend_products_v2(self, user_analysis: Dict, dataset: Dict, limit: int, user_profile: Optional[Dict] = None) -> List[Dict]:
+        """AI가 전체 상품을 보고 실제로 추천하는 개선된 버전 - 사용자 프로필 적용"""
         
         products = dataset["products"]
         domain = dataset["domain"]
@@ -330,11 +428,8 @@ class GeminiService:
                                 "risk_assessment": "보통",
                                 "expected_benefit": selection.get("reason", "AI 추천 상품")
                             },
-                            "user_specific": {
-                                "recommended_monthly_amount": self._estimate_monthly_amount(original_product),
-                                "risk_compatibility": "매우 적합",
-                                "age_appropriateness": "적합"
-                            }
+                            # 🔥 사용자 프로필 기반 맞춤 정보 계산
+                            "user_specific": self._calculate_user_specific_info(original_product, user_profile)
                         }
                         
                         final_recommendations.append(recommendation)
@@ -348,8 +443,8 @@ class GeminiService:
             
         except Exception as e:
             print(f"❌ AI 추천 실패: {e}")
-            # 폴백: 다양성을 고려한 랜덤 선택
-            return self._fallback_diverse_selection(products, limit)
+            # 🔥 폴백에도 user_profile 전달
+            return self._fallback_diverse_selection(products, limit, user_profile)
     
     def _format_products_for_ai(self, products_summary: List[Dict]) -> str:
         """AI가 읽기 쉬운 형태로 상품 정보 포맷팅"""
@@ -369,8 +464,8 @@ class GeminiService:
             
         return formatted_text
     
-    def _fallback_diverse_selection(self, products: List[Dict], limit: int) -> List[Dict]:
-        """AI 실패시 폴백: 다양성을 고려한 선택"""
+    def _fallback_diverse_selection(self, products: List[Dict], limit: int, user_profile: Optional[Dict] = None) -> List[Dict]:
+        """AI 실패시 폴백: 다양성을 고려한 선택 - 사용자 프로필 적용"""
         
         print(f"🔄 폴백 모드: 다양성 기반 선택")
         
@@ -392,7 +487,7 @@ class GeminiService:
                 break
             if bank not in banks_used:
                 product_index, product = bank_products[0]  # 각 은행의 첫 번째 상품
-                selected.append(self._create_fallback_recommendation(product, 85 - len(selected) * 3))
+                selected.append(self._create_fallback_recommendation(product, 85 - len(selected) * 3, user_profile))
                 banks_used.add(bank)
         
         # 2차: 부족하면 추가 선택
@@ -400,14 +495,14 @@ class GeminiService:
             remaining_products = [p for i, p in enumerate(products) if i >= len(selected)]
             if remaining_products:
                 product = remaining_products[0]
-                selected.append(self._create_fallback_recommendation(product, 85 - len(selected) * 3))
+                selected.append(self._create_fallback_recommendation(product, 85 - len(selected) * 3, user_profile))
             else:
                 break
         
         return selected
     
-    def _create_fallback_recommendation(self, product: Dict, score: int) -> Dict:
-        """폴백 추천 객체 생성"""
+    def _create_fallback_recommendation(self, product: Dict, score: int, user_profile: Optional[Dict] = None) -> Dict:
+        """폴백 추천 객체 생성 - 사용자 프로필 기반"""
         return {
             "product_id": product.get('id', ''),
             "name": product.get('name', ''),
@@ -422,12 +517,211 @@ class GeminiService:
                 "risk_assessment": "보통",
                 "expected_benefit": "균형잡힌 선택"
             },
-            "user_specific": {
+            "user_specific": self._calculate_user_specific_info(product, user_profile)
+        }
+
+    def _calculate_user_specific_info(self, product: Dict, user_profile: Optional[Dict] = None) -> Dict:
+        """사용자 프로필 기반 맞춤 정보 계산"""
+        
+        if not user_profile:
+            # 프로필이 없으면 기본값 반환
+            return {
                 "recommended_monthly_amount": 300000,
                 "risk_compatibility": "적합",
                 "age_appropriateness": "적합"
             }
+        
+        # 사용자 기본 정보 추출
+        basic_info = user_profile.get("basic_info", {})
+        investment_profile = user_profile.get("investment_profile", {})
+        financial_status = user_profile.get("financial_status", {})
+        
+        age = basic_info.get("age", "")
+        occupation = basic_info.get("occupation", "")
+        risk_score = investment_profile.get("total_score", 0)
+        
+        # 1. 추천 월 납입액 계산
+        monthly_amount = self._calculate_recommended_monthly_amount(
+            product, basic_info, financial_status, investment_profile
+        )
+        
+        # 2. 위험도 적합성 평가
+        risk_compatibility = self._assess_risk_compatibility(
+            product, risk_score, investment_profile
+        )
+        
+        # 3. 연령 적합성 평가
+        age_appropriateness = self._assess_age_appropriateness(
+            product, age, basic_info
+        )
+        
+        return {
+            "recommended_monthly_amount": monthly_amount,
+            "risk_compatibility": risk_compatibility,
+            "age_appropriateness": age_appropriateness
         }
+
+    def _calculate_recommended_monthly_amount(self, product: Dict, basic_info: Dict, financial_status: Dict, investment_profile: Dict) -> int:
+        """추천 월 납입액 계산"""
+        
+        # 기본 최소 금액
+        min_amount = product.get('details', {}).get('minimum_amount', 100000)
+        base_amount = max(100000, min_amount)
+        
+        # 직업 기반 소득 추정
+        occupation = basic_info.get("occupation", "").lower()
+        income_multiplier = 1.0
+        
+        if any(job in occupation for job in ["의사", "변호사", "회계사"]):
+            income_multiplier = 2.5
+        elif any(job in occupation for job in ["공무원", "교사", "대기업"]):
+            income_multiplier = 1.8
+        elif any(job in occupation for job in ["자영업", "프리랜서"]):
+            income_multiplier = 1.2
+        elif any(job in occupation for job in ["학생", "무직"]):
+            income_multiplier = 0.5
+        
+        # 연령 기반 조정
+        age = basic_info.get("age", "")
+        age_multiplier = 1.0
+        
+        if "20" in age:
+            age_multiplier = 0.7  # 20대는 소득이 낮을 가능성
+        elif "30" in age:
+            age_multiplier = 1.2  # 30대는 소득 증가
+        elif "40" in age:
+            age_multiplier = 1.5  # 40대는 소득 정점
+        elif "50" in age:
+            age_multiplier = 1.3  # 50대는 여전히 높은 소득
+        
+        # 투자 성향 기반 조정
+        risk_score = investment_profile.get("total_score", 0)
+        risk_multiplier = 1.0
+        
+        if risk_score <= 20:  # 보수적
+            risk_multiplier = 0.8
+        elif risk_score >= 40:  # 공격적
+            risk_multiplier = 1.3
+        
+        # 상품 타입별 조정
+        product_type = product.get('type', '').lower()
+        type_multiplier = 1.0
+        
+        if "적금" in product_type:
+            type_multiplier = 1.0  # 적금은 기본
+        elif "예금" in product_type:
+            type_multiplier = 3.0  # 예금은 목돈이므로 더 큰 금액
+        elif "대출" in product_type:
+            return 0  # 대출은 월 납입액 개념이 없음
+        
+        # 최종 계산
+        calculated_amount = int(base_amount * income_multiplier * age_multiplier * risk_multiplier * type_multiplier)
+        
+        # 범위 제한 (10만원 ~ 500만원)
+        return max(100000, min(5000000, calculated_amount))
+
+    def _assess_risk_compatibility(self, product: Dict, risk_score: int, investment_profile: Dict) -> str:
+        """위험도 적합성 평가"""
+        
+        product_type = product.get('type', '').lower()
+        
+        # 상품별 위험도 정의
+        if any(keyword in product_type for keyword in ["예금", "정기예금"]):
+            product_risk = "낮음"  # 예금은 안전
+        elif any(keyword in product_type for keyword in ["적금", "정기적금"]):
+            product_risk = "낮음"  # 적금도 안전
+        elif any(keyword in product_type for keyword in ["신용대출"]):
+            product_risk = "중간"  # 신용대출은 중간 위험
+        elif any(keyword in product_type for keyword in ["주택담보대출"]):
+            product_risk = "낮음"  # 담보대출은 상대적으로 안전
+        else:
+            product_risk = "중간"
+        
+        # 사용자 위험 성향
+        if risk_score <= 20:
+            user_risk = "보수적"
+        elif risk_score <= 40:
+            user_risk = "중도적"
+        else:
+            user_risk = "공격적"
+        
+        # 적합성 매칭
+        if product_risk == "낮음":
+            if user_risk == "보수적":
+                return "매우 적합"
+            elif user_risk == "중도적":
+                return "적합"
+            else:
+                return "다소 보수적"
+        
+        elif product_risk == "중간":
+            if user_risk == "보수적":
+                return "신중히 검토"
+            elif user_risk == "중도적":
+                return "적합"
+            else:
+                return "적합"
+        
+        else:  # 높음
+            if user_risk == "보수적":
+                return "부적합"
+            elif user_risk == "중도적":
+                return "신중히 검토"
+            else:
+                return "적합"
+
+    def _assess_age_appropriateness(self, product: Dict, age: str, basic_info: Dict) -> str:
+        """연령 적합성 평가"""
+        
+        product_type = product.get('type', '').lower()
+        product_name = product.get('name', '').lower()
+        
+        # 연령대 구분
+        if "20" in age:
+            age_group = "20대"
+        elif "30" in age:
+            age_group = "30대"
+        elif "40" in age:
+            age_group = "40대"
+        elif "50" in age:
+            age_group = "50대"
+        elif "60" in age or "70" in age:
+            age_group = "시니어"
+        else:
+            age_group = "일반"
+        
+        # 상품별 연령 적합성
+        if any(keyword in product_type for keyword in ["예금", "적금"]):
+            if age_group == "20대":
+                return "목돈 마련에 적합"
+            elif age_group == "30대":
+                return "자산 형성에 적합"
+            elif age_group == "40대":
+                return "안정적 저축에 적합"
+            elif age_group in ["50대", "시니어"]:
+                return "안전 자산 운용에 적합"
+            else:
+                return "적합"
+        
+        elif "대출" in product_type:
+            if age_group == "20대":
+                if "주택담보" in product_type:
+                    return "신중한 검토 필요"
+                else:
+                    return "적합"
+            elif age_group in ["30대", "40대"]:
+                return "적합"
+            elif age_group == "50대":
+                if "주택담보" in product_type:
+                    return "적합"
+                else:
+                    return "상환 계획 신중히 검토"
+            elif age_group == "시니어":
+                return "신중한 검토 필요"
+            else:
+                return "적합"
+        
+        return "적합"
     
     def _extract_product_interest_rate(self, product: Dict) -> float:
         """상품에서 금리 정보 추출"""

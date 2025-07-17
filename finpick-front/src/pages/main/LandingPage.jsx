@@ -89,7 +89,7 @@ const FinPickLanding = () => {
               <p className="text-lg text-gray-400 mb-8 leading-relaxed">
                 복잡한 조건 입력 없이 자연어로 말해보세요.
                 <br />
-                AI가 340개+ 상품 중에서 당신에게 딱 맞는 것만 골라드립니다.
+                AI가 370개+ 상품 중에서 당신에게 딱 맞는 것만 골라드립니다.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -243,7 +243,7 @@ const FinPickLanding = () => {
                   {
                     step: "02",
                     title: "AI 분석",
-                    description: "340개+ 상품에서 최적 매칭",
+                    description: "370개+ 상품에서 최적 매칭",
                     gradientClass: "bg-gradient-to-r from-cyan-400 to-cyan-500",
                   },
                   {

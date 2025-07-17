@@ -168,6 +168,18 @@ export class SmartRecommendationService {
         }
       );
 
+      // ✅ 이 부분을 추가해 주세요
+      if (response.is_financial_related === false) {
+        return {
+          success: false,
+          is_financial_related: false,
+          message: response.message || "관련 없는 질문입니다.",
+          confidence: response.confidence || 0,
+          reason: response.reason || "",
+          data: [],
+        };
+      }
+
       if (response.success) {
         console.log("✅ 개인화 추천 성공:", response.data);
 
