@@ -1108,6 +1108,129 @@ const FinPickConstellationMap = () => {
       handleSendMessage();
     }
   };
+  const handleQuickSend = async (text) => {
+    if (!text.trim()) return;
+
+    // 입력창에 텍스트 설정
+    setInputValue(text);
+
+    // 약간의 딜레이 후 전송 (사용자가 텍스트가 입력되는 것을 볼 수 있도록)
+    setTimeout(async () => {
+      const userMessage = {
+        id: Date.now(),
+        type: "user",
+        content: text,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setInputValue(""); // 입력창 비우기
+      setIsLoading(true);
+      setLoadingProgress(0);
+      setPins([]);
+      setConstellationLines([]);
+      setSelectedPin(null);
+      setApiError(null);
+
+      // 개인화 정보 초기화
+      setPersonalizationLevel("none");
+      setUserInsights({});
+      setRecommendationReasoning("");
+
+      // 기존 handleSendMessage의 로직과 동일하게 처리
+      try {
+        if (serverConnected) {
+          console.log("🤖 백엔드 AI 추천 요청...");
+
+          const response =
+            await SmartRecommendationService.getPersonalizedRecommendations(
+              text, // currentQuery 대신 text 사용
+              null
+            );
+
+          console.log("🔍 전체 백엔드 응답:", response);
+
+          // 금융 관련 없는 요청 체크
+          if (response.is_financial_related === false) {
+            console.log("❌ AI가 금융 관련 없는 요청으로 판단");
+
+            setIsLoading(false);
+
+            const aiMessage = {
+              id: Date.now() + 1,
+              type: "ai",
+              content:
+                response.message ||
+                "죄송해요, 저는 대출, 예금, 적금 상품 추천을 도와드리는 AI입니다. 금융 상품에 대해 궁금한 점이 있으시면 언제든 말씀해 주세요! 😊",
+              timestamp: new Date(),
+              isNonFinancialResponse: true,
+            };
+
+            setMessages((prev) => [...prev, aiMessage]);
+            return;
+          }
+
+          if (response.success) {
+            // 상품 데이터 추출 로직 (기존과 동일)
+            let products = [];
+
+            if (Array.isArray(response.data)) {
+              products = response.data;
+            } else if (response.data?.recommended_products) {
+              products = response.data.recommended_products;
+            } else if (response.data?.data?.recommendations) {
+              products = response.data.data.recommendations;
+            } else if (response.data?.recommendations) {
+              products = response.data.recommendations;
+            }
+
+            const convertedProducts = convertBackendProducts(products);
+            setOriginalProductsData(convertedProducts);
+
+            setIsLoading(false);
+
+            const inferredDomain = inferDomain(text);
+
+            const aiMessage = {
+              id: Date.now() + 1,
+              type: "ai",
+              content: `✨ AI 분석 완료! ${convertedProducts.length}개의 상품으로 스마트 포트폴리오를 구성했습니다.`,
+              timestamp: new Date(),
+            };
+
+            setMessages((prev) => [...prev, aiMessage]);
+
+            setTimeout(() => {
+              const { pins: newPins, lines } = generateFixedConstellation(
+                convertedProducts,
+                inferredDomain
+              );
+              animateConstellationFormation(newPins, lines);
+            }, 1000);
+          } else {
+            throw new Error(response.message || "추천 실패");
+          }
+        } else {
+          // 서버 연결 안된 경우 폴백 로직 (기존과 동일)
+          handleFallbackRecommendation(text);
+        }
+      } catch (error) {
+        console.error("❌ 추천 요청 실패:", error);
+        setIsLoading(false);
+        setApiError(error.message);
+
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: "ai",
+          content:
+            "죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    }, 300);
+    setShowChat(false);
+  };
 
   // --- Main Return Statement ---
   return (
@@ -1486,11 +1609,10 @@ const FinPickConstellationMap = () => {
                     "높은 금리 적금 찾아줘",
                     "안전한 예금상품",
                     "신용대출 추천",
-                    "월 50만원 적금",
                   ].map((suggestion) => (
                     <button
                       key={suggestion}
-                      onClick={() => setInputValue(suggestion)}
+                      onClick={() => handleQuickSend(suggestion)}
                       className="px-3 py-1 bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 text-xs rounded-lg transition-colors"
                       disabled={isLoading}
                     >
@@ -1695,16 +1817,39 @@ const FinPickConstellationMap = () => {
                             맞춤 정보
                           </h5>
                           <div className="space-y-2 text-sm text-gray-300">
-                            {selectedPin.userSpecific
-                              .recommended_monthly_amount && (
-                              <div className="flex justify-between items-center">
-                                <span>추천 월 납입액:</span>
-                                <span className="font-medium text-purple-300">
-                                  {selectedPin.userSpecific.recommended_monthly_amount.toLocaleString()}
-                                  원
-                                </span>
-                              </div>
+                            {/* 디버깅을 위한 콘솔 출력 */}
+                            {console.log(
+                              "디버깅 - recommended_monthly_amount:",
+                              selectedPin.userSpecific
+                                .recommended_monthly_amount
                             )}
+
+                            {/* 조건을 더 명확하게 분리 */}
+                            {(() => {
+                              const monthlyAmount =
+                                selectedPin.userSpecific
+                                  .recommended_monthly_amount;
+                              const isValidAmount =
+                                monthlyAmount && monthlyAmount > 0;
+
+                              console.log(
+                                "monthlyAmount:",
+                                monthlyAmount,
+                                "isValidAmount:",
+                                isValidAmount
+                              );
+
+                              return isValidAmount ? (
+                                <div className="flex justify-between items-center">
+                                  <span>추천 월 납입액:</span>
+                                  <span className="font-medium text-purple-300">
+                                    {monthlyAmount.toLocaleString()}원
+                                  </span>
+                                </div>
+                              ) : null;
+                            })()}
+
+                            {/* 목표 달성 기간 */}
                             {selectedPin.userSpecific.achievement_timeline && (
                               <div className="flex justify-between items-center">
                                 <span>목표 달성 예상:</span>
@@ -1716,6 +1861,8 @@ const FinPickConstellationMap = () => {
                                 </span>
                               </div>
                             )}
+
+                            {/* 위험도 적합성 */}
                             {selectedPin.userSpecific.risk_compatibility && (
                               <div className="flex justify-between items-center">
                                 <span>위험도 적합성:</span>
@@ -1724,6 +1871,8 @@ const FinPickConstellationMap = () => {
                                 </span>
                               </div>
                             )}
+
+                            {/* 연령 적합성 */}
                             {selectedPin.userSpecific.age_appropriateness && (
                               <div className="flex justify-between items-center">
                                 <span>연령 적합성:</span>

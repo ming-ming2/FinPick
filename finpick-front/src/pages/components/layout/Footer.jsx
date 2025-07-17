@@ -6,9 +6,13 @@ const Footer = () => {
     <footer className="border-t border-gray-800/50 py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
-              <span className="text-gray-900 font-bold text-sm">₩</span>
+          <div className="flex items-center justify-center space-x-1 mb-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
+              <img
+                src="/logo.png"
+                alt="FinPick"
+                className="w-full h-full object-contain"
+              />
             </div>
             <span className="text-xl font-bold">FinPick</span>
           </div>
