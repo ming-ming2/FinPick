@@ -168,7 +168,6 @@ export class SmartRecommendationService {
         }
       );
 
-      // ✅ 이 부분을 추가해 주세요
       if (response.is_financial_related === false) {
         return {
           success: false,
@@ -209,6 +208,7 @@ export class SmartRecommendationService {
     }
   }
 
+  // 🔥 업데이트된 종합 사용자 프로필 메서드
   static async getComprehensiveUserProfile() {
     try {
       const currentUser = auth.currentUser;
@@ -219,32 +219,205 @@ export class SmartRecommendationService {
 
       const userId = currentUser.uid;
 
+      // 🔥 Firebase에서 사용자 프로필 가져오기 (우선순위 1)
       const firestoreProfile = await this.getUserProfileFromFirestore(userId);
-      const localProfile = this.getUserProfileFromStorage();
 
-      const comprehensiveProfile = {
+      // 🔥 새로운 온보딩 데이터 확인
+      if (firestoreProfile?.onboardingAnswers) {
+        console.log(
+          "✅ 새로운 온보딩 데이터 발견:",
+          firestoreProfile.onboardingAnswers
+        );
+
+        // 새로운 온보딩 형식으로 프로필 구성
+        const comprehensiveProfile = {
+          userId: userId,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+
+          // 🔥 새로운 온보딩 데이터 우선 사용
+          ...firestoreProfile,
+
+          // 🔥 백엔드 호환성을 위한 매핑
+          basicInfo:
+            firestoreProfile.basicInfo ||
+            this.mapOnboardingToBasicInfo(firestoreProfile.onboardingAnswers),
+          investmentProfile:
+            firestoreProfile.investmentProfile ||
+            this.mapOnboardingToInvestmentProfile(
+              firestoreProfile.onboardingAnswers
+            ),
+
+          dataSource: {
+            type: "new_onboarding",
+            firestore: true,
+            localStorage: false,
+            version: "2.0",
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        console.log("🔥 새로운 온보딩 기반 종합 프로필:", comprehensiveProfile);
+        return comprehensiveProfile;
+      }
+
+      // 🔄 기존 온보딩 데이터가 있는 경우 (하위 호환성)
+      if (firestoreProfile?.basicInfo || firestoreProfile?.investmentProfile) {
+        console.log("✅ 기존 온보딩 데이터 발견");
+
+        const comprehensiveProfile = {
+          userId: userId,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+          ...firestoreProfile,
+
+          dataSource: {
+            type: "legacy_onboarding",
+            firestore: true,
+            localStorage: false,
+            version: "1.0",
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        console.log("🔄 기존 온보딩 기반 종합 프로필:", comprehensiveProfile);
+        return comprehensiveProfile;
+      }
+
+      // 💾 로컬스토리지 폴백 (기존 로직)
+      const localProfile = this.getUserProfileFromStorage();
+      if (localProfile && Object.keys(localProfile).length > 0) {
+        console.log("📱 로컬스토리지 데이터 사용");
+
+        const comprehensiveProfile = {
+          userId: userId,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+          ...localProfile,
+
+          dataSource: {
+            type: "localStorage_fallback",
+            firestore: false,
+            localStorage: true,
+            version: "0.9",
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        // 로컬 데이터를 Firebase에 저장
+        await this.saveUserProfileToFirestore(userId, comprehensiveProfile);
+
+        console.log("💾 로컬스토리지 기반 종합 프로필:", comprehensiveProfile);
+        return comprehensiveProfile;
+      }
+
+      // ⚠️ 프로필이 전혀 없는 경우
+      console.log("⚠️ 사용자 프로필이 없음 - 온보딩 필요");
+      return {
         userId: userId,
         email: currentUser.email,
         displayName: currentUser.displayName,
         photoURL: currentUser.photoURL,
-        ...(firestoreProfile || {}),
-        ...(localProfile || {}),
+        needsOnboarding: true,
         dataSource: {
-          firestore: !!firestoreProfile,
-          localStorage: !!localProfile,
+          type: "empty_profile",
+          firestore: false,
+          localStorage: false,
+          version: "0.0",
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (localProfile && Object.keys(localProfile).length > 0) {
-        await this.saveUserProfileToFirestore(userId, comprehensiveProfile);
-      }
-
-      console.log("🔥 종합 사용자 프로필:", comprehensiveProfile);
-      return comprehensiveProfile;
     } catch (error) {
       console.error("❌ 종합 사용자 프로필 수집 실패:", error);
       return null;
+    }
+  }
+
+  // 🔄 새로운 온보딩 답변을 기존 basicInfo 형식으로 매핑
+  static mapOnboardingToBasicInfo(onboardingAnswers) {
+    if (!onboardingAnswers) return null;
+
+    return {
+      age: onboardingAnswers.age?.value || "정보없음",
+      ageGroup: this.extractAgeGroup(onboardingAnswers.age?.value),
+      occupation: "정보없음", // 새 온보딩에서는 수집하지 않음
+      residence: "정보없음", // 새 온보딩에서는 수집하지 않음
+      primaryGoal: onboardingAnswers.goal?.value || "정보없음",
+      investmentAmount: onboardingAnswers.amount?.value || "정보없음",
+      timeframe: onboardingAnswers.period?.value || "정보없음",
+      completedAt: onboardingAnswers.completedAt,
+      version: "2.0_mapped",
+    };
+  }
+
+  // 🔄 새로운 온보딩 답변을 기존 investmentProfile 형식으로 매핑
+  static mapOnboardingToInvestmentProfile(onboardingAnswers) {
+    if (!onboardingAnswers) return null;
+
+    const riskScore = this.getRiskScore(onboardingAnswers.risk?.value);
+    const periodScore = this.getPeriodScore(onboardingAnswers.period?.value);
+    const totalScore = riskScore * 4 + periodScore * 2;
+
+    return {
+      riskTolerance: {
+        value: onboardingAnswers.risk?.value || "정보없음",
+        score: riskScore,
+      },
+      investmentPeriod: {
+        value: onboardingAnswers.period?.value || "정보없음",
+        score: periodScore,
+      },
+      totalScore: totalScore,
+      riskLevel: this.calculateRiskLevel(totalScore),
+      completedAt: onboardingAnswers.completedAt,
+      version: "2.0_mapped",
+    };
+  }
+
+  // 🎯 헬퍼 메서드들
+  static extractAgeGroup(ageValue) {
+    const ageMap = {
+      "20대": "20대",
+      "30대": "30대",
+      "40대": "40대",
+      "50대 이상": "50대이상",
+    };
+    return ageMap[ageValue] || "기타";
+  }
+
+  static getRiskScore(riskValue) {
+    const scoreMap = {
+      "절대 안돼요": 1,
+      "조금은 괜찮아요": 3,
+      "수익을 위해서라면": 5,
+    };
+    return scoreMap[riskValue] || 2;
+  }
+
+  static getPeriodScore(periodValue) {
+    const scoreMap = {
+      "1년 이내": 1,
+      "2-3년": 2,
+      "3-5년": 3,
+      "5년 이상": 4,
+    };
+    return scoreMap[periodValue] || 2;
+  }
+
+  static calculateRiskLevel(totalScore) {
+    if (totalScore <= 8) {
+      return { level: 1, name: "매우 보수적", description: "안전성 최우선" };
+    } else if (totalScore <= 12) {
+      return { level: 2, name: "보수적", description: "낮은 위험 선호" };
+    } else if (totalScore <= 16) {
+      return { level: 3, name: "균형적", description: "적당한 위험 감수" };
+    } else if (totalScore <= 20) {
+      return { level: 4, name: "적극적", description: "높은 수익 추구" };
+    } else {
+      return { level: 5, name: "매우 적극적", description: "고위험 고수익" };
     }
   }
 
@@ -296,7 +469,7 @@ export class SmartRecommendationService {
       const currentTime = new Date().toISOString();
 
       const recommendationData = {
-        timestamp: currentTime, // 🔥 수정: serverTimestamp() 대신 일반 문자열 사용
+        timestamp: currentTime,
         query: query,
         recommendations: recommendations,
         sessionId: this.getSessionId(),
@@ -315,7 +488,7 @@ export class SmartRecommendationService {
         "behaviorAnalytics.totalRecommendationRequests":
           (currentProfile?.behaviorAnalytics?.totalRecommendationRequests ||
             0) + 1,
-        updatedAt: serverTimestamp(), // 🔥 최상위 레벨에서만 serverTimestamp() 사용
+        updatedAt: serverTimestamp(),
       });
 
       console.log("✅ 추천 기록 Firestore 저장 완료");

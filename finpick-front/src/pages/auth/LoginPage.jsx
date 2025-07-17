@@ -1,6 +1,8 @@
+// finpick-front/src/pages/auth/LoginPage.jsx
 import React, { useState } from "react";
 import { Chrome, MessageCircle, Github, Mail, Lock } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
+import { UserService } from "../../services/userService";
 
 import {
   loginWithGoogle,
@@ -16,6 +18,58 @@ const LoginPage = () => {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // 🔥 온보딩 완료 상태 확인 함수
+  const checkOnboardingStatus = async (user) => {
+    try {
+      console.log("👤 온보딩 상태 확인 중...", user.uid);
+
+      const userProfile = await UserService.getUserProfile(user.uid);
+
+      if (!userProfile) {
+        console.log("📝 신규 사용자 - 온보딩 필요");
+        return false;
+      }
+
+      // 🔥 새로운 온보딩 완료 확인
+      if (
+        userProfile.onboardingAnswers &&
+        userProfile.onboardingStatus?.isCompleted
+      ) {
+        console.log("✅ 새로운 온보딩 완료됨");
+        return true;
+      }
+
+      // 🔄 기존 온보딩 완료 확인 (하위 호환성)
+      if (
+        userProfile.onboardingStatus?.isCompleted ||
+        (userProfile.basicInfo && userProfile.investmentProfile)
+      ) {
+        console.log("✅ 기존 온보딩 완료됨");
+        return true;
+      }
+
+      console.log("📝 온보딩 미완료");
+      return false;
+    } catch (error) {
+      console.error("❌ 온보딩 상태 확인 실패:", error);
+      // 에러 시 안전하게 온보딩으로 이동
+      return false;
+    }
+  };
+
+  // 🎯 로그인 후 리다이렉트 결정
+  const handlePostLoginRedirect = async (user) => {
+    const hasCompletedOnboarding = await checkOnboardingStatus(user);
+
+    if (hasCompletedOnboarding) {
+      console.log("🏠 홈 화면으로 이동");
+      navigate("/recommendations");
+    } else {
+      console.log("📝 온보딩 페이지로 이동");
+      navigate("/onboarding");
+    }
+  };
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
@@ -40,8 +94,8 @@ const LoginPage = () => {
         console.warn("⚠️ 토큰이 저장되지 않았습니다.");
       }
 
-      // 로그인 성공 시 온보딩으로 이동
-      navigate("/onboarding/step1");
+      // 🔥 스마트 리다이렉트
+      await handlePostLoginRedirect(result.user);
     } catch (error) {
       setError(error.message);
       console.error("❌ Auth error:", error);
@@ -69,8 +123,8 @@ const LoginPage = () => {
         console.warn("⚠️ Google 토큰이 저장되지 않았습니다.");
       }
 
-      // 로그인 성공 시 온보딩으로 이동
-      navigate("/onboarding/step1");
+      // 🔥 스마트 리다이렉트
+      await handlePostLoginRedirect(result.user);
     } catch (error) {
       setError(error.message);
       console.error("❌ Google login error:", error);
@@ -113,6 +167,13 @@ const LoginPage = () => {
         {error && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
             {error}
+          </div>
+        )}
+
+        {/* Loading Message */}
+        {loading && (
+          <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-sm">
+            {isLogin ? "로그인 중..." : "회원가입 중..."}
           </div>
         )}
 
