@@ -25,31 +25,44 @@ const LoginPage = () => {
       console.log("👤 온보딩 상태 확인 중...", user.uid);
 
       const userProfile = await UserService.getUserProfile(user.uid);
+      console.log("📋 조회된 사용자 프로필:", userProfile);
 
       if (!userProfile) {
         console.log("📝 신규 사용자 - 온보딩 필요");
         return false;
       }
 
-      // 🔥 새로운 온보딩 완료 확인
+      // 🔥 새로운 온보딩 완료 확인 (더 엄격한 검증)
       if (
         userProfile.onboardingAnswers &&
-        userProfile.onboardingStatus?.isCompleted
+        Object.keys(userProfile.onboardingAnswers).length >= 5 && // 최소 5개 답변 필요
+        userProfile.onboardingStatus?.isCompleted === true
       ) {
-        console.log("✅ 새로운 온보딩 완료됨");
+        console.log("✅ 새로운 온보딩 완료됨", {
+          answersCount: Object.keys(userProfile.onboardingAnswers).length,
+          isCompleted: userProfile.onboardingStatus?.isCompleted,
+        });
         return true;
       }
 
       // 🔄 기존 온보딩 완료 확인 (하위 호환성)
       if (
-        userProfile.onboardingStatus?.isCompleted ||
+        userProfile.onboardingStatus?.isCompleted === true ||
         (userProfile.basicInfo && userProfile.investmentProfile)
       ) {
         console.log("✅ 기존 온보딩 완료됨");
         return true;
       }
 
-      console.log("📝 온보딩 미완료");
+      console.log("📝 온보딩 미완료", {
+        onboardingAnswers: !!userProfile.onboardingAnswers,
+        answersCount: userProfile.onboardingAnswers
+          ? Object.keys(userProfile.onboardingAnswers).length
+          : 0,
+        isCompleted: userProfile.onboardingStatus?.isCompleted,
+        basicInfo: !!userProfile.basicInfo,
+        investmentProfile: !!userProfile.investmentProfile,
+      });
       return false;
     } catch (error) {
       console.error("❌ 온보딩 상태 확인 실패:", error);
@@ -60,13 +73,49 @@ const LoginPage = () => {
 
   // 🎯 로그인 후 리다이렉트 결정
   const handlePostLoginRedirect = async (user) => {
-    const hasCompletedOnboarding = await checkOnboardingStatus(user);
+    try {
+      console.log("🎯 로그인 후 리다이렉트 처리 시작");
 
-    if (hasCompletedOnboarding) {
-      console.log("🏠 홈 화면으로 이동");
-      navigate("/recommendations");
-    } else {
-      console.log("📝 온보딩 페이지로 이동");
+      // 🔥 Firebase 데이터 동기화를 위한 약간의 딜레이
+      console.log("⏳ Firebase 데이터 동기화 대기...");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // 🔥 최대 3번까지 재시도
+      let attempts = 0;
+      let hasCompletedOnboarding = false;
+
+      while (attempts < 3) {
+        attempts++;
+        console.log(`🔄 온보딩 상태 확인 시도 ${attempts}/3`);
+
+        hasCompletedOnboarding = await checkOnboardingStatus(user);
+
+        if (hasCompletedOnboarding) {
+          break;
+        }
+
+        // 실패 시 1초 대기 후 재시도
+        if (attempts < 3) {
+          console.log("⏳ 1초 후 재시도...");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      console.log(
+        `🏁 최종 결과: hasCompletedOnboarding = ${hasCompletedOnboarding}`
+      );
+
+      if (hasCompletedOnboarding) {
+        console.log("🏠 추천 화면으로 이동");
+        navigate("/recommendations");
+      } else {
+        console.log("📝 온보딩 페이지로 이동");
+        navigate("/onboarding");
+      }
+    } catch (error) {
+      console.error("❌ 리다이렉트 처리 실패:", error);
+      // 에러 시 안전하게 온보딩으로 이동
+      console.log("🔄 에러로 인해 온보딩으로 이동");
       navigate("/onboarding");
     }
   };

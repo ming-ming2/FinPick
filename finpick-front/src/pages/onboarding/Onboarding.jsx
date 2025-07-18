@@ -9,7 +9,9 @@ const Onboarding = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // This state isn't used, consider removing if not needed.
+  const [showCompletionAnimation, setShowCompletionAnimation] = useState(false);
+  const [completionStatus, setCompletionStatus] = useState("saving"); // 'saving', 'success', 'error'
 
   // 📊 간소화된 질문 데이터 (5개 핵심 질문)
   const questions = [
@@ -76,12 +78,15 @@ const Onboarding = () => {
 
   const totalSteps = questions.length;
 
-  // 🎯 답변 선택 핸들러
-  const handleAnswer = (questionId, answer) => {
-    setAnswers((prev) => ({
-      ...prev,
+  // 🎯 답변 선택 핸들러 - 🎉 즉석 완료 애니메이션 스타일
+  const handleAnswer = async (questionId, answer) => {
+    const updatedAnswers = {
+      ...answers,
       [questionId]: answer,
-    }));
+    };
+
+    // 상태 업데이트
+    setAnswers(updatedAnswers);
 
     // 자동으로 다음 질문으로 넘어감
     if (currentStep < totalSteps - 1) {
@@ -91,17 +96,121 @@ const Onboarding = () => {
         setIsTransitioning(false);
       }, 300);
     } else {
-      // 마지막 질문이면 완료 처리
-      handleComplete();
+      // 🎉 마지막 질문! 즉석 완료 애니메이션 실행
+      setShowCompletionAnimation(true);
+      setCompletionStatus("saving");
+
+      try {
+        // 🔥 Firebase 저장
+        console.log("💾 즉석 저장 시작...");
+        // Ensure user and user.uid exist before calling UserService
+        if (user && user.uid) {
+          await UserService.saveOnboardingAnswers(user.uid, updatedAnswers);
+        } else {
+          throw new Error("User not authenticated or UID not available.");
+        }
+
+        // 🎉 성공 애니메이션
+        setCompletionStatus("success");
+
+        // 2초 후 추천 페이지로 이동
+        setTimeout(() => {
+          window.location.href = "/recommendations";
+        }, 2000);
+      } catch (error) {
+        console.error("❌ 저장 실패:", error);
+        setCompletionStatus("error");
+
+        // 에러 시 3초 후 다시 시도 옵션 제공
+        setTimeout(() => {
+          setShowCompletionAnimation(false);
+        }, 3000);
+      }
     }
   };
 
-  // 📝 온보딩 완료 처리
-  const handleComplete = () => {
-    console.log("온보딩 완료:", answers);
+  // 🎉 즉석 완료 애니메이션 컴포넌트
+  const CompletionOverlay = () => {
+    if (!showCompletionAnimation) return null;
 
-    // 완료 화면으로 전환
-    setCurrentStep(totalSteps);
+    return (
+      <div className="fixed inset-0 bg-gray-950/95 backdrop-blur-xl z-50 flex items-center justify-center">
+        <div className="text-center">
+          {/* 메인 애니메이션 아이콘 */}
+          <div className="relative mb-8">
+            {completionStatus === "saving" && (
+              <div className="w-24 h-24 mx-auto">
+                <div className="w-24 h-24 border-4 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+              </div>
+            )}
+
+            {completionStatus === "success" && (
+              <div className="w-24 h-24 mx-auto bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center animate-bounce">
+                <CheckCircle className="w-12 h-12 text-gray-900" />
+              </div>
+            )}
+
+            {completionStatus === "error" && (
+              <div className="w-24 h-24 mx-auto bg-red-500 rounded-full flex items-center justify-center animate-pulse">
+                <span className="text-3xl text-white">❌</span>
+              </div>
+            )}
+          </div>
+
+          {/* 메시지 */}
+          <div className="space-y-4">
+            {completionStatus === "saving" && (
+              <>
+                <h2 className="text-2xl font-bold text-white">
+                  설정을 저장하고 있어요
+                </h2>
+                <p className="text-gray-400">잠시만 기다려주세요...</p>
+              </>
+            )}
+
+            {completionStatus === "success" && (
+              <>
+                <h2 className="text-3xl font-bold text-white mb-2">🎉 완료!</h2>
+                <p className="text-xl text-emerald-400 font-semibold">
+                  프로필 설정이 완료되었어요
+                </p>
+                <p className="text-gray-400">맞춤 추천을 준비하고 있어요</p>
+              </>
+            )}
+
+            {completionStatus === "error" && (
+              <>
+                <h2 className="text-2xl font-bold text-white">
+                  저장에 실패했어요
+                </h2>
+                <p className="text-gray-400">다시 시도해주세요</p>
+                <button
+                  onClick={() => setShowCompletionAnimation(false)}
+                  className="mt-4 bg-emerald-500 text-white px-6 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+                >
+                  다시 시도
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* 진행 점들 */}
+          {completionStatus === "saving" && (
+            <div className="flex items-center justify-center space-x-1 mt-8">
+              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+              <div
+                className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"
+                style={{ animationDelay: "0.2s" }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"
+                style={{ animationDelay: "0.4s" }}
+              ></div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // ⬅️ 이전 단계로
@@ -111,128 +220,15 @@ const Onboarding = () => {
     }
   };
 
-  // 🎉 완료 화면
-  if (currentStep >= totalSteps) {
-    const getPersonalizedMessage = () => {
-      const age = answers.age?.value || "";
-      const goal = answers.goal?.value || "";
-
-      if (goal.includes("안전하게")) {
-        return `${age} 안전 투자자님을 위한 맞춤 상품들을 준비했어요! 📋`;
-      } else if (goal.includes("목돈")) {
-        return `${age} 목표 달성형 투자자님! 체계적인 계획을 세워드릴게요 🎯`;
-      } else if (goal.includes("투자")) {
-        return `${age} 적극적 투자자님! 수익성 높은 상품들을 찾아드릴게요 📈`;
-      } else if (goal.includes("빌리기")) {
-        return `${age} 대출 상품을 찾으시는군요! 최적 조건을 비교해드릴게요 💳`;
-      }
-      return `${age} 투자자님만을 위한 특별한 추천을 준비했어요! ✨`;
-    };
-
-    const questionLabels = {
-      age: "나이대",
-      goal: "목표",
-      amount: "금액",
-      period: "기간",
-      risk: "투자성향",
-    };
-
-    return (
-      <div className="min-h-screen bg-gray-950 text-white relative overflow-hidden">
-        {/* 배경 그라데이션 효과 */}
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/20 via-gray-950 to-cyan-900/20" />
-        <div className="absolute top-20 left-20 w-32 h-32 bg-emerald-400/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-32 right-16 w-40 h-40 bg-cyan-400/10 rounded-full blur-3xl" />
-
-        <div className="relative flex items-center justify-center min-h-screen px-4 py-8">
-          {/* 🎨 반응형 중앙 정렬 컨테이너 */}
-          <div className="text-center max-w-xs lg:max-w-md w-full mx-auto">
-            {/* 완료 아이콘 */}
-            <div className="relative mb-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-400/25">
-                <CheckCircle className="w-8 h-8 text-gray-900" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
-                <span className="text-sm">✨</span>
-              </div>
-            </div>
-
-            {/* 메인 메시지 */}
-            <h1 className="text-2xl font-bold mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              프로필 설정 완료!
-            </h1>
-
-            <p className="text-sm text-gray-300 mb-6 leading-relaxed px-2">
-              {getPersonalizedMessage()}
-            </p>
-
-            {/* 선택 내용 카드 */}
-            <div className="bg-gray-800/40 backdrop-blur-sm rounded-xl p-4 mb-6 border border-gray-700/50">
-              <h3 className="text-xs font-medium text-emerald-400 mb-3 flex items-center">
-                <span className="mr-1">📝</span>
-                설정하신 내용
-              </h3>
-              <div className="space-y-2">
-                {Object.entries(answers).map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between p-2 bg-gray-900/50 rounded-lg"
-                  >
-                    <span className="text-gray-400 text-xs font-medium">
-                      {questionLabels[key]}
-                    </span>
-                    <span className="text-white text-xs font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                      {value.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* AI 분석 중 표시 */}
-            <div className="bg-gradient-to-r from-emerald-400/10 to-cyan-400/10 rounded-lg p-3 mb-6 border border-emerald-400/20">
-              <div className="flex items-center justify-center space-x-1">
-                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                <div
-                  className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"
-                  style={{ animationDelay: "0.2s" }}
-                />
-                <div
-                  className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"
-                  style={{ animationDelay: "0.4s" }}
-                />
-              </div>
-              <p className="text-emerald-400 text-xs mt-2 font-medium">
-                {isSaving
-                  ? "Firebase에 프로필 저장 중..."
-                  : "AI가 379개 금융상품을 분석하고 있어요"}
-              </p>
-            </div>
-
-            {/* 액션 버튼 */}
-            <button
-              onClick={() => (window.location.href = "/recommendations")}
-              disabled={isSaving}
-              className="w-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 py-3 rounded-lg font-bold text-base hover:from-emerald-500 hover:to-cyan-500 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-400/25 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? "저장 중..." : "맞춤 추천 받기 🎯"}
-            </button>
-
-            {/* 하단 메시지 */}
-            <p className="text-xs text-gray-500 mt-3">
-              언제든지 설정을 변경할 수 있어요
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // Define currentQuestion and progress before the return statement
   const currentQuestion = questions[currentStep];
   const progress = ((currentStep + 1) / totalSteps) * 100;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="min-h-screen bg-gray-950 text-white overflow-hidden relative">
+      {/* 🎉 즉석 완료 애니메이션 오버레이 */}
+      <CompletionOverlay />
+
       {/* 🎨 반응형 중앙 정렬 컨테이너 */}
       <div className="max-w-md mx-auto lg:max-w-2xl xl:max-w-4xl">
         {/* 🎨 헤더 */}
@@ -291,10 +287,11 @@ const Onboarding = () => {
               <button
                 key={option.value}
                 onClick={() => handleAnswer(currentQuestion.id, option)}
-                className="w-full p-6 bg-gray-800/50 hover:bg-gray-800 rounded-2xl 
-                         border border-gray-700/50 hover:border-emerald-400/50 
-                         transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]
-                         text-left group"
+                disabled={showCompletionAnimation}
+                className="w-full p-6 bg-gray-800/50 hover:bg-gray-800 rounded-2xl
+                               border border-gray-700/50 hover:border-emerald-400/50
+                               transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]
+                               text-left group disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   animationDelay: `${index * 100}ms`,
                   animation: "fadeInUp 0.6s ease-out forwards",

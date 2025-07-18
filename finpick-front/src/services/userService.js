@@ -158,10 +158,14 @@ export class UserService {
   // 🔥 새로운 간소화된 온보딩 저장 메서드
   static async saveOnboardingAnswers(userId, answers) {
     try {
+      console.log("💾 UserService.saveOnboardingAnswers 시작");
+      console.log("📤 받은 데이터:", { userId, answers });
+
       const userRef = doc(db, "users", userId);
 
       // 기존 데이터 구조와 호환되도록 변환
       const convertedData = this.convertAnswersToProfile(answers);
+      console.log("🔄 변환된 데이터:", convertedData);
 
       const updateData = {
         // 새로운 간소화된 온보딩 데이터
@@ -178,17 +182,19 @@ export class UserService {
         investmentGoals: convertedData.investmentGoals,
 
         // 검색 가능한 필드들 업데이트
-        "searchableFields.ageGroup": this.extractAgeGroup(answers.age.value),
+        "searchableFields.ageGroup": this.extractAgeGroup(answers.age?.value),
         "searchableFields.primaryGoal": this.extractGoalType(
-          answers.goal.value
+          answers.goal?.value
         ),
         "searchableFields.investmentAmount": this.extractAmount(
-          answers.amount.value
+          answers.amount?.value
         ),
         "searchableFields.investmentPeriod": this.extractPeriod(
-          answers.period.value
+          answers.period?.value
         ),
-        "searchableFields.riskLevel": this.extractRiskLevel(answers.risk.value),
+        "searchableFields.riskLevel": this.extractRiskLevel(
+          answers.risk?.value
+        ),
         "searchableFields.lastUpdated": serverTimestamp(),
 
         // 온보딩 상태 업데이트
@@ -199,12 +205,14 @@ export class UserService {
 
         // AI 학습용 데이터
         "aiLearningData.behaviorSignals.riskAppetite":
-          this.calculateRiskAppetite(answers.risk.value),
+          this.calculateRiskAppetite(answers.risk?.value),
         "aiLearningData.behaviorSignals.digitalAdoption": 0.9, // 새로운 온보딩 사용했으므로 높음
 
         // 기본 설정
         updatedAt: serverTimestamp(),
       };
+
+      console.log("📤 Firebase에 저장할 데이터:", updateData);
 
       await updateDoc(userRef, updateData);
 
@@ -225,45 +233,84 @@ export class UserService {
 
   // 🔄 새로운 답변을 기존 구조로 변환하는 헬퍼 메서드
   static convertAnswersToProfile(answers) {
-    return {
-      basicInfo: {
-        age: answers.age.value,
-        ageGroup: this.extractAgeGroup(answers.age.value),
-        occupation: "정보 없음", // 새 온보딩에서는 수집하지 않음
-        residence: "정보 없음",
-        completedAt: serverTimestamp(),
-      },
+    console.log("🔄 답변 변환 시작:", answers);
 
-      investmentProfile: {
-        riskTolerance: {
-          value: answers.risk.value,
-          score: this.getRiskScore(answers.risk.value),
-        },
-        investmentPeriod: {
-          value: answers.period.value,
-          score: this.getPeriodScore(answers.period.value),
-        },
-        totalScore: this.calculateTotalScore(answers),
-        riskLevel: this.calculateRiskLevel(this.calculateTotalScore(answers)),
-        completedAt: serverTimestamp(),
-      },
+    if (!answers || Object.keys(answers).length === 0) {
+      console.warn("⚠️ 변환할 답변이 없습니다.");
+      return {
+        basicInfo: null,
+        investmentProfile: null,
+        financialStatus: null,
+        investmentGoals: null,
+      };
+    }
 
-      financialStatus: {
-        monthlyIncome: "정보 없음", // 직접 수집하지 않고 amount에서 추정
-        estimatedInvestmentCapacity: answers.amount.value,
-        completedAt: serverTimestamp(),
-      },
-
-      investmentGoals: {
-        primaryGoal: answers.goal.value,
-        timeframe: answers.period.value,
-        targetAmount: answers.amount.value,
-        completedAt: serverTimestamp(),
-      },
+    // basicInfo 생성
+    const basicInfo = {
+      age: answers.age?.value || "정보없음",
+      ageGroup: this.extractAgeGroup(answers.age?.value),
+      occupation: "온라인 사용자", // 새 온보딩에서는 수집하지 않음
+      residence: "대한민국", // 새 온보딩에서는 수집하지 않음
+      primaryGoal: answers.goal?.value || "정보없음",
+      completedAt: new Date().toISOString(),
+      version: "2.0_converted",
     };
+
+    // investmentProfile 생성
+    const riskScore = this.getRiskScore(answers.risk?.value);
+    const periodScore = this.getPeriodScore(answers.period?.value);
+    const totalScore = riskScore * 4 + periodScore * 2;
+
+    const investmentProfile = {
+      riskTolerance: {
+        value: answers.risk?.value || "정보없음",
+        score: riskScore,
+      },
+      investmentPeriod: {
+        value: answers.period?.value || "정보없음",
+        score: periodScore,
+      },
+      totalScore: totalScore,
+      riskLevel: this.calculateRiskLevel(totalScore),
+      completedAt: new Date().toISOString(),
+      version: "2.0_converted",
+    };
+
+    // financialStatus 생성 (간소화된 버전)
+    const financialStatus = {
+      monthlyInvestmentAmount: answers.amount?.value || "정보없음",
+      investmentCapacity: this.extractAmount(answers.amount?.value),
+      completedAt: new Date().toISOString(),
+      version: "2.0_converted",
+    };
+
+    // investmentGoals 생성
+    const investmentGoals = [
+      {
+        goalType: this.extractGoalType(answers.goal?.value),
+        targetAmount: this.getTargetAmountFromPeriodAndAmount(
+          answers.period?.value,
+          answers.amount?.value
+        ),
+        timeframe: answers.period?.value || "정보없음",
+        priority: 1,
+        description: `${answers.goal?.value} - ${answers.period?.value}에 ${answers.amount?.value}`,
+        completedAt: new Date().toISOString(),
+      },
+    ];
+
+    const result = {
+      basicInfo,
+      investmentProfile,
+      financialStatus,
+      investmentGoals,
+    };
+
+    console.log("✅ 답변 변환 완료:", result);
+    return result;
   }
 
-  // 🎯 답변에서 정보 추출하는 헬퍼 메서드들
+  // 🎯 헬퍼 메서드들
   static extractAgeGroup(ageValue) {
     const ageMap = {
       "20대": "20대",
@@ -275,16 +322,18 @@ export class UserService {
   }
 
   static extractGoalType(goalValue) {
-    const goalMap = {
-      "안전하게 돈 모으기": "안전저축",
-      "목돈 만들기": "목돈마련",
-      "투자로 수익내기": "투자수익",
-      "돈 빌리기": "대출필요",
-    };
-    return goalMap[goalValue] || "기타";
+    if (!goalValue) return "기타";
+
+    if (goalValue.includes("안전하게")) return "안전저축";
+    if (goalValue.includes("목돈")) return "목표달성";
+    if (goalValue.includes("투자")) return "투자수익";
+    if (goalValue.includes("빌리기")) return "대출";
+    return "기타";
   }
 
   static extractAmount(amountValue) {
+    if (!amountValue) return 0;
+
     const amountMap = {
       "월 10만원": 100000,
       "월 30만원": 300000,
@@ -295,32 +344,35 @@ export class UserService {
   }
 
   static extractPeriod(periodValue) {
+    if (!periodValue) return "기타";
+
     const periodMap = {
       "1년 이내": "단기",
       "2-3년": "중기",
-      "3-5년": "중장기",
-      "5년 이상": "장기",
+      "3-5년": "장기",
+      "5년 이상": "초장기",
     };
-    return periodMap[periodValue] || "중기";
+    return periodMap[periodValue] || "기타";
   }
 
   static extractRiskLevel(riskValue) {
+    if (!riskValue) return "보통";
+
     const riskMap = {
-      "절대 안돼요": 1,
-      "조금은 괜찮아요": 3,
-      "수익을 위해서라면": 5,
+      "절대 안돼요": "안전",
+      "조금은 괜찮아요": "보통",
+      "수익을 위해서라면": "적극",
     };
-    return riskMap[riskValue] || 2;
+    return riskMap[riskValue] || "보통";
   }
 
-  // 📊 점수 계산 메서드들
   static getRiskScore(riskValue) {
     const scoreMap = {
       "절대 안돼요": 1,
       "조금은 괜찮아요": 3,
       "수익을 위해서라면": 5,
     };
-    return scoreMap[riskValue] || 2;
+    return scoreMap[riskValue] || 3;
   }
 
   static getPeriodScore(periodValue) {
@@ -333,128 +385,167 @@ export class UserService {
     return scoreMap[periodValue] || 2;
   }
 
-  static calculateTotalScore(answers) {
-    const riskScore = this.getRiskScore(answers.risk.value);
-    const periodScore = this.getPeriodScore(answers.period.value);
-
-    // 간단한 총점 계산 (기존 시스템과 호환)
-    return riskScore * 4 + periodScore * 2;
-  }
-
   static calculateRiskLevel(totalScore) {
-    if (totalScore <= 8) {
-      return { level: 1, name: "매우 보수적", description: "안전성 최우선" };
-    } else if (totalScore <= 12) {
-      return { level: 2, name: "보수적", description: "낮은 위험 선호" };
-    } else if (totalScore <= 16) {
-      return { level: 3, name: "균형적", description: "적당한 위험 감수" };
-    } else if (totalScore <= 20) {
-      return { level: 4, name: "적극적", description: "높은 수익 추구" };
-    } else {
-      return { level: 5, name: "매우 적극적", description: "고위험 고수익" };
-    }
+    if (totalScore <= 8) return "안전";
+    if (totalScore <= 12) return "보통";
+    if (totalScore <= 16) return "적극";
+    return "공격";
   }
 
   static calculateRiskAppetite(riskValue) {
     const appetiteMap = {
-      "절대 안돼요": 0.1,
+      "절대 안돼요": 0.2,
       "조금은 괜찮아요": 0.5,
-      "수익을 위해서라면": 0.9,
+      "수익을 위해서라면": 0.8,
     };
-    return appetiteMap[riskValue] || 0.3;
+    return appetiteMap[riskValue] || 0.5;
   }
 
-  // 🗓️ 기존 4단계 온보딩 메서드들 (하위 호환성)
+  static getTargetAmountFromPeriodAndAmount(periodValue, amountValue) {
+    const monthlyAmount = this.extractAmount(amountValue);
+    const months = this.getMonthsFromPeriod(periodValue);
+    return monthlyAmount * months;
+  }
+
+  static getMonthsFromPeriod(periodValue) {
+    const monthsMap = {
+      "1년 이내": 12,
+      "2-3년": 30,
+      "3-5년": 48,
+      "5년 이상": 60,
+    };
+    return monthsMap[periodValue] || 36;
+  }
+
+  // 🔥 활동 로그 기록 메서드
+  static async logUserActivity(userId, activityType, metadata = {}) {
+    try {
+      const activityRef = collection(db, "userActivities");
+      await addDoc(activityRef, {
+        userId: userId,
+        activityType: activityType,
+        metadata: metadata,
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      console.log("✅ 활동 로그 기록 완료:", activityType);
+    } catch (error) {
+      console.error("❌ 활동 로그 기록 실패:", error);
+      // 로그 실패는 치명적이지 않으므로 에러를 던지지 않음
+    }
+  }
+
+  // 🔥 기타 필요한 메서드들
   static async saveBasicInfo(userId, basicInfoData) {
     try {
       const userRef = doc(db, "users", userId);
-
-      const updateData = {
-        basicInfo: {
-          ...basicInfoData,
-          completedAt: serverTimestamp(),
-        },
-        "searchableFields.ageGroup": this.getAgeGroup(basicInfoData.age),
-        "searchableFields.occupation": basicInfoData.occupation,
-        "searchableFields.residence": basicInfoData.residence,
-        "searchableFields.familyStatus": basicInfoData.maritalStatus,
-        "searchableFields.lastUpdated": serverTimestamp(),
+      await updateDoc(userRef, {
+        basicInfo: basicInfoData,
         "onboardingStatus.stepsCompleted.step1": true,
-        "onboardingStatus.currentStep": 2,
-        "onboardingStatus.lastActiveAt": serverTimestamp(),
+        "onboardingStatus.currentStep": Math.max(
+          2,
+          await this.getCurrentStep(userId)
+        ),
         updatedAt: serverTimestamp(),
-      };
-
-      await updateDoc(userRef, updateData);
-      await this.logUserActivity(userId, "onboarding_step1_completed", {
-        completionTime: Date.now(),
-        dataFields: Object.keys(basicInfoData),
       });
-
-      return updateData;
+      console.log("✅ 기본 정보 저장 완료");
     } catch (error) {
-      console.error("기본정보 저장 실패:", error);
+      console.error("❌ 기본 정보 저장 실패:", error);
       throw error;
     }
   }
 
-  // 📈 활동 로그 기록
-  static async logUserActivity(userId, activityType, details = {}) {
+  static async saveInvestmentProfile(userId, investmentProfileData) {
     try {
-      const activitiesRef = collection(db, "users", userId, "activities");
-
-      const activityData = {
-        activityId: crypto.randomUUID(),
-        recordedAt: serverTimestamp(),
-        sessionId: this.getSessionId(),
-        isAutoCaptured: true,
-        activityType,
-        details: {
-          ...details,
-          device: this.getDeviceInfo(),
-          userAgent: navigator.userAgent,
-          timestamp: Date.now(),
-        },
-      };
-
-      await addDoc(activitiesRef, activityData);
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        investmentProfile: investmentProfileData,
+        "onboardingStatus.stepsCompleted.step2": true,
+        "onboardingStatus.currentStep": Math.max(
+          3,
+          await this.getCurrentStep(userId)
+        ),
+        updatedAt: serverTimestamp(),
+      });
+      console.log("✅ 투자 프로필 저장 완료");
     } catch (error) {
-      console.error("활동 로깅 실패:", error);
+      console.error("❌ 투자 프로필 저장 실패:", error);
+      throw error;
     }
   }
 
-  // 🔧 유틸리티 메서드들
-  static getAgeGroup(age) {
-    if (age < 25) return "20대 초반";
-    if (age < 30) return "20대 후반";
-    if (age < 35) return "30대 초반";
-    if (age < 40) return "30대 후반";
-    if (age < 45) return "40대 초반";
-    if (age < 50) return "40대 후반";
-    if (age < 60) return "50대";
-    return "60대 이상";
-  }
-
-  static getSessionId() {
-    let sessionId = sessionStorage.getItem("finpick_session_id");
-    if (!sessionId) {
-      sessionId = crypto.randomUUID();
-      sessionStorage.setItem("finpick_session_id", sessionId);
+  static async saveFinancialStatus(userId, financialData) {
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        financialStatus: financialData,
+        "onboardingStatus.stepsCompleted.step3": true,
+        "onboardingStatus.currentStep": Math.max(
+          4,
+          await this.getCurrentStep(userId)
+        ),
+        updatedAt: serverTimestamp(),
+      });
+      console.log("✅ 재무 상태 저장 완료");
+    } catch (error) {
+      console.error("❌ 재무 상태 저장 실패:", error);
+      throw error;
     }
-    return sessionId;
   }
 
-  static getDeviceInfo() {
-    return {
-      type: /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)
-        ? "mobile"
-        : "desktop",
-      platform: navigator.platform,
-      language: navigator.language,
-      screen: {
-        width: window.screen.width,
-        height: window.screen.height,
-      },
-    };
+  static async saveInvestmentGoals(userId, goalsData) {
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        investmentGoals: goalsData,
+        "onboardingStatus.stepsCompleted.step4": true,
+        "onboardingStatus.currentStep": Math.max(
+          5,
+          await this.getCurrentStep(userId)
+        ),
+        "onboardingStatus.isCompleted": true,
+        "onboardingStatus.completedAt": serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      console.log("✅ 투자 목표 저장 완료");
+    } catch (error) {
+      console.error("❌ 투자 목표 저장 실패:", error);
+      throw error;
+    }
+  }
+
+  static async getCurrentStep(userId) {
+    try {
+      const userProfile = await this.getUserProfile(userId);
+      return userProfile?.onboardingStatus?.currentStep || 1;
+    } catch (error) {
+      console.error("❌ 현재 단계 조회 실패:", error);
+      return 1;
+    }
+  }
+
+  static async recordRecommendationInteraction(
+    userId,
+    recommendationId,
+    products,
+    action,
+    metadata = {}
+  ) {
+    try {
+      const interactionRef = collection(db, "userInteractions");
+      await addDoc(interactionRef, {
+        userId: userId,
+        recommendationId: recommendationId,
+        products: products,
+        action: action,
+        metadata: metadata,
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      console.log("✅ 상호작용 기록 완료");
+    } catch (error) {
+      console.error("❌ 상호작용 기록 실패:", error);
+      throw error;
+    }
   }
 }

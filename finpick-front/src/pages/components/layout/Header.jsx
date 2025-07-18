@@ -1,14 +1,21 @@
-// finpick-front/src/components/layout/Header.jsx
+// finpick-front/src/pages/components/layout/Header.jsx
 import React, { useState } from "react";
-import { ChevronDown, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../contexts/AuthContext";
-import { logout } from "../../../services/auth";
+import { signOut } from "firebase/auth";
+import { auth } from "../../../firebase";
+import { User, LogOut, ChevronDown, Sparkles } from "lucide-react";
 
 const Header = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const isAuthenticated = !!user;
+
+  const handleLogin = () => {
+    navigate("/login");
+  };
 
   const handleGetStarted = () => {
     if (isAuthenticated) {
@@ -18,39 +25,55 @@ const Header = () => {
     }
   };
 
-  const handleLogin = () => {
-    navigate("/login");
-  };
-
   const handleLogout = async () => {
     try {
-      await logout();
-      setShowProfileMenu(false);
+      await signOut(auth);
+      localStorage.removeItem("authToken");
+      console.log("✅ 로그아웃 성공");
+      navigate("/");
     } catch (error) {
-      console.error("로그아웃 실패:", error);
+      console.error("❌ 로그아웃 실패:", error);
     }
   };
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-xl bg-gray-950/80 border-b border-gray-800/50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex justify-between items-center py-3">
-          <div className="flex items-center space-x-1">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
-              <img
-                src="/logo.png"
-                alt="FinPick"
-                className="w-full h-full object-contain"
-              />
+    <header className="bg-gray-950/95 backdrop-blur-sm border-b border-gray-800/50 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo */}
+          <div
+            className="flex items-center space-x-2 cursor-pointer"
+            onClick={() => navigate("/")}
+          >
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-gray-900" />
             </div>
-            <span className="text-xl font-bold">FinPick</span>
+            <span className="text-xl font-bold text-white">FinPick</span>
           </div>
 
-          <div className="flex items-center space-x-3">
+          {/* Navigation */}
+          <nav className="hidden md:flex items-center space-x-8">
+            <button
+              onClick={() => navigate("/how-to-use")}
+              className="text-gray-400 hover:text-white text-sm transition-colors"
+            >
+              이용방법
+            </button>
+            <button
+              onClick={() => navigate("/about")}
+              className="text-gray-400 hover:text-white text-sm transition-colors"
+            >
+              서비스 소개
+            </button>
+          </nav>
+
+          {/* Auth Buttons */}
+          <div className="flex items-center space-x-4">
             {isAuthenticated ? (
               <>
+                {/* 🔥 모바일에서 시작하기 버튼 숨김 */}
                 <button
-                  className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                  className="hidden md:inline-block bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
                   onClick={handleGetStarted}
                 >
                   시작하기
@@ -95,8 +118,9 @@ const Header = () => {
                 >
                   로그인
                 </button>
+                {/* 🔥 모바일에서 시작하기 버튼 숨김 */}
                 <button
-                  className="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-100 transition-all"
+                  className="hidden md:inline-block bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-100 transition-all"
                   onClick={handleGetStarted}
                 >
                   시작하기
