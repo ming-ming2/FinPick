@@ -100,7 +100,10 @@ const FinPickLanding = () => {
                   <span>{isAuthenticated ? "추천 받기" : "지금 시작하기"}</span>
                   <ArrowRight className="w-5 h-5" />
                 </button>
-                <button className="border border-gray-700 text-gray-300 px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-all">
+                <button
+                  className="border border-gray-700 text-gray-300 px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-all"
+                  onClick={() => navigate("/how-to-use")}
+                >
                   사용법 보기
                 </button>
               </div>

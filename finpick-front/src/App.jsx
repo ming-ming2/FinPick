@@ -8,6 +8,7 @@ import LoginPage from "./pages/auth/LoginPage";
 import Onboarding from "./pages/onboarding/Onboarding";
 import MyPage from "./pages/main/MyPage";
 import ChatRecommendation from "./pages/main/ChatRecommendation";
+import HowToUsePage from "./pages/main/HowToUsePage";
 
 // 스크롤 초기화 컴포넌트
 function ScrollToTop() {
@@ -32,6 +33,7 @@ function App() {
           <Route path="/mypage" element={<MyPage />} />
           <Route path="/chat" element={<ChatRecommendation />} />
           <Route path="/recommendations" element={<ChatRecommendation />} />
+          <Route path="/how-to-use" element={<HowToUsePage />} />
         </Routes>
       </Router>
     </AuthProvider>
